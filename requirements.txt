@@ -3,4 +3,7 @@ pandas
 numpy-stl
 matplotlib
 
+scipy
+pymesh
+
 jax
