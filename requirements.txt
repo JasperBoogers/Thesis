@@ -1,7 +1,9 @@
 numpy
 pandas
-numpy-stl
 matplotlib
+
+vtk
+numpy-stl
 
 scipy
 

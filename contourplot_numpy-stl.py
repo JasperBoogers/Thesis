@@ -2,15 +2,15 @@ from matplotlib import pyplot as plt
 import numpy as np
 from stl import mesh
 from mpl_toolkits import mplot3d
-import math
 import time
-
-from parameters import par
+import os
 from f_eval import f_eval
+
 
 # load mesh
 file = '3DBenchy-bridge.stl'
-m = mesh.Mesh.from_file(file)
+fp = os.path.join('Geometries', '3DBenchy', file)
+m = mesh.Mesh.from_file(fp)
 print(f'Loaded file {file} with {m.vectors.shape[0]} faces')
 
 # set up iteration variables
