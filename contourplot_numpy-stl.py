@@ -3,21 +3,21 @@ import numpy as np
 from stl import mesh
 from mpl_toolkits import mplot3d
 import time
-import os
 from f_eval import f_eval
+from parameters import par
 
+FILEPATH = par['Filepath']
+FILENAME = ''
+MAX_ANGLE = par['Max angle']
+NUM_ANGLE = par['Res angle']
 
 # load mesh
-file = '3DBenchy-bridge.stl'
-fp = os.path.join('Geometries', '3DBenchy', file)
-m = mesh.Mesh.from_file(fp)
-print(f'Loaded file {file} with {m.vectors.shape[0]} faces')
+m = mesh.Mesh.from_file(FILEPATH)
+print(f'Loaded file {FILENAME} with {m.vectors.shape[0]} faces')
 
 # set up iteration variables
-angle = np.pi
-num = 20
-theta = phi = np.linspace(-angle, angle, num)
-f = np.zeros((num, num))
+theta = phi = np.linspace(-MAX_ANGLE, MAX_ANGLE, NUM_ANGLE)
+f = np.zeros((NUM_ANGLE, NUM_ANGLE))
 
 start = time.time()
 for i, t in enumerate(theta):
@@ -37,7 +37,7 @@ cs = ax.contour(x, y, f)
 ax.clabel(cs, inline=True, fontsize=10)
 ax.set_xlabel('x axis rotation')
 ax.set_ylabel('y axis rotation')
-ax.set_title(f'Contour plot of CoG z-value of {file}')
+ax.set_title(f'Contour plot of CoG z-value of {FILENAME}')
 
 fig2 = plt.figure()
 ax2 = fig2.add_subplot(111, projection='3d')
@@ -47,5 +47,5 @@ scale = m.points.flatten()
 ax2.auto_scale_xyz(scale, scale, scale)
 ax2.set_xlabel('x')
 ax2.set_ylabel('y')
-ax2.set_title(f'Optimal orientation of {file} \n t={round(theta[opt_idx[0]], 1)}, p={round(phi[opt_idx[1]])}')
+ax2.set_title(f'Optimal orientation of {FILENAME} \n t={round(theta[opt_idx[0]], 1)}, p={round(phi[opt_idx[1]])}')
 plt.show()
