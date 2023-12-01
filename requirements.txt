@@ -4,6 +4,7 @@ matplotlib
 
 vtk
 numpy-stl
+pyvista
 
 scipy
 

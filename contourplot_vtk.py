@@ -18,13 +18,18 @@ from vtk import (
     vtkAxesActor,
     vtkCubeSource,
     vtkCenterOfMass)
-import os
+import pyvista as pv
 from parameters import par
 
 
 # make evaluation function
 def eval(model):
-    return 1
+    flt = vtkCenterOfMass()
+    flt.SetInputData(model)
+    flt.SetUseScalarsAsWeights(False)
+    flt.Update()
+    cog = flt.GetCenter()
+    return cog[-1]
 
 
 def move_to_origin(obj):
@@ -127,15 +132,22 @@ def main():
             tfm.RotateX(x)
             tfm.RotateY(y)
 
-            print(tfm.GetOrientation())
+            # print(tfm.GetOrientation())
 
             # update pipeliine
             renWin.Render()
 
+            f[i, j] = eval(filt.GetOutput())
+
     end = time.time()
     print(f'execution duration: {end-start} seconds')
-    iren.Start()
+    # iren.Start()
 
- 
+    # surface plot
+    x, y = np.meshgrid(ax, ay)
+    surface = pv.StructuredGrid(x, y, f)
+    surface.plot(show_edges=True, show_grid=True)
+
+
 if __name__ == "__main__":
     main()
