@@ -4,13 +4,42 @@ from parameters import par
 import time
 
 
+class Mesh:
+
+    def __init__(self, file, x=0, y=0):
+        self.data = pv.read(file)
+        self.rot_x = x
+        self.rot_y = y
+
+    def get_orientation(self):
+        return self.rot_x, self.rot_y
+
+    def __getattr__(self, attr):
+        return getattr(self.data, attr)
+
+    def rotate_x(self, angle):
+        self.data.rotate_x(angle, point=(0, 0, 0), inplace=True)
+        self.rot_x = self.rot_x + angle
+
+    def rotate_y(self, angle):
+        self.data.rotate_y(angle, point=(0, 0, 0), inplace=True)
+        self.rot_y = self.rot_y + angle
+
+    # def set_rotation(self, x, y, inplace=True):
+    #     super().rotate_x(x - self.rot_x, inplace=inplace)
+    #     super().rotate_y(y - self.rot_y, inplace=inplace)
+    #     self.rot_x = x
+    #     self.rot_y = y
+
+
 def main():
     # load parameters
     FILENAME = par['Filepath']
-    NUM_IT = par['Res angle']
+    NUM_IT = par['Res angle']   
     MAX_ANGLE = par['Max angle']
 
-    mesh = pv.read(FILENAME)
+    file = pv.read(FILENAME)
+    mesh = Mesh(FILENAME)
 
     # add origin
     ax = pv.Axes(show_actor=True)
@@ -18,14 +47,29 @@ def main():
 
     plot = pv.Plotter()
     plot.add_actor(ax.actor)
-    plot.add_mesh(mesh)
+    plot.add_mesh(mesh.data, color='green')
 
     plot.show(interactive_update=True)
+
+    # perform rotations
+    ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, NUM_IT)
+    f = np.zeros((NUM_IT, NUM_IT))
+
+    start = time.time()
     time.sleep(2)
-    mesh.rotate_x(90, inplace=True)
+    mesh.rotate_x(90)
+    
+
     plot.update()
+
+    time.sleep(2)
+    mesh.rotate_x(-90)
+    plot.update()
+
     plot.show()
 
+    end = time.time()
+    print(f'execution duration: {end-start} seconds')
 
 if __name__ == "__main__":
     main()
