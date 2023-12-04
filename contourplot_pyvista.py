@@ -17,13 +17,28 @@ class Mesh:
     def __getattr__(self, attr):
         return getattr(self.data, attr)
 
-    def rotate_x(self, angle):
-        self.data.rotate_x(angle, point=(0, 0, 0), inplace=True)
-        self.rot_x = self.rot_x + angle
+    def rotate_x(self, angle, point=(0, 0, 0), abs=False):
+        if abs:
+            a = angle - self.rot_x
+        else:
+            a = angle
 
-    def rotate_y(self, angle):
-        self.data.rotate_y(angle, point=(0, 0, 0), inplace=True)
-        self.rot_y = self.rot_y + angle
+        self.data.rotate_x(a, point=point, inplace=True)
+        self.rot_x = self.rot_x + a
+
+    def rotate_y(self, angle, point=(0, 0, 0), abs=False):
+        if abs:
+            a = angle - self.rot_x
+        else:
+            a = angle
+        
+        self.data.rotate_y(a, point=point, inplace=True)
+        self.rot_y = self.rot_y + a
+
+    def move_to_origin(self):
+        cog = self.data.center_of_mass()
+        self.data.translate(-cog, inplace=True)
+
 
     # def set_rotation(self, x, y, inplace=True):
     #     super().rotate_x(x - self.rot_x, inplace=inplace)
@@ -57,11 +72,11 @@ def main():
 
     start = time.time()
     time.sleep(2)
-    mesh.rotate_x(90)
-    
-
+    mesh.move_to_origin()
     plot.update()
-
+    time.sleep(2)
+    mesh.rotate_x(90)
+    plot.update()
     time.sleep(2)
     mesh.rotate_x(-90)
     plot.update()
