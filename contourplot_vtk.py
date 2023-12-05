@@ -23,7 +23,7 @@ from parameters import par
 
 
 # make evaluation function
-def eval(model):
+def eval_f(model):
     flt = vtkCenterOfMass()
     flt.SetInputData(model)
     flt.SetUseScalarsAsWeights(False)
@@ -78,7 +78,8 @@ def main():
     tfm.Identity()
 
     filt = vtkTransformPolyDataFilter()
-    filt.SetInputConnection(reader.GetOutputPort())
+    # filt.SetInputConnection(reader.GetOutputPort())
+    filt.SetInputData(move_to_origin(reader.GetOutput()))
     filt.SetTransform(tfm)
 
     mapper = vtkPolyDataMapper()
@@ -132,12 +133,12 @@ def main():
             tfm.RotateX(x)
             tfm.RotateY(y)
 
-            # print(tfm.GetOrientation())
+            print(tfm.GetOrientation())
 
-            # update pipeliine
+            # update pipeline
             renWin.Render()
 
-            f[i, j] = eval(filt.GetOutput())
+            f[i, j] = eval_f(filt.GetOutput())
 
     end = time.time()
     print(f'execution duration: {end-start} seconds')
