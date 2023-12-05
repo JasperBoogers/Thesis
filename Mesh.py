@@ -1,5 +1,6 @@
 from typing import Callable
 import pyvista as pv
+import numpy as np
 
 
 class Mesh:
@@ -33,8 +34,12 @@ class Mesh:
         self.data.rotate_y(a, point=point, inplace=True)  # type: ignore
         self.rot_y = self.rot_y + a
 
-    def move_to_origin(self) -> None:
+    def move_cog_to_orign(self) -> np.ndarray:
         """Moves the center of mass to its origin
         """
         cog = self.data.center_of_mass()  # type: ignore
         self.data.translate(-cog, inplace=True)  # type: ignore
+        return cog
+
+    def move_to(self, cog) -> None:
+        self.data.translate(cog, inplace=True)  # type: ignore
