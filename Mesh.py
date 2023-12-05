@@ -34,12 +34,16 @@ class Mesh:
         self.data.rotate_y(a, point=point, inplace=True)  # type: ignore
         self.rot_y = self.rot_y + a
 
-    def move_cog_to_orign(self) -> np.ndarray:
+    def move_cog_to(self, point=[0, 0, 0]) -> np.ndarray:
         """Moves the center of mass to its origin
         """
+        if type(point) is not np.ndarray:
+            point = np.array(point)
+
         cog = self.data.center_of_mass()  # type: ignore
-        self.data.translate(-cog, inplace=True)  # type: ignore
+        loc = point - cog
+        self.move_to(loc)
         return cog
 
-    def move_to(self, cog) -> None:
-        self.data.translate(cog, inplace=True)  # type: ignore
+    def move_to(self, p) -> None:
+        self.data.translate(p, inplace=True)  # type: ignore

@@ -5,9 +5,9 @@ import time
 from Mesh import Mesh
 
 
-def eval_f(m):
-    cog = m.data.center_of_mass()
-    return cog[-1]
+def eval_f(m, p):
+    proj = m.project_points_to_plane(origin=p)
+    return proj.area
 
 
 def main():
@@ -15,40 +15,46 @@ def main():
     FILENAME = par['Filepath']
     NUM_IT = par['Res angle']
     MAX_ANGLE = par['Max angle']
+    ORIGIN = par['Origin']
+    proj_origin = [0, 0, -21]
 
-    file = pv.read(FILENAME)
     mesh = Mesh(FILENAME)
-    mesh.move_to_origin()
+    proj = mesh.project_points_to_plane(origin=proj_origin)
+    _ = mesh.move_cog_to(ORIGIN)
 
+    # perform grid search using rotations
     plot = pv.Plotter()  # type: ignore
     plot.add_axes_at_origin()
-    plot.add_mesh(mesh.data, color='green')
-
+    plot.add_mesh(mesh.data, color='green', name='object')
+    plot.add_mesh(proj, color='blue', name='projection')
     plot.show(interactive_update=True)
 
-    # perform rotations
     ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, NUM_IT)
-    f = np.zeros((NUM_IT, NUM_IT))
+    f = np.zeros((ax.shape[0], ay.shape[0]))
 
     start = time.time()
-    for i, x in enumerate(ax):
-        for j, y in enumerate(ay):
-            time.sleep(2)
+    for i, y in enumerate(ax):
+        for j, x in enumerate(ay):
+            time.sleep(0.1)
+
             mesh.rotate_x(x, abs=True)
             mesh.rotate_y(y, abs=True)
-            print(mesh.get_orientation())
+            proj = mesh.project_points_to_plane(origin=proj_origin)
+            plot.add_mesh(proj, color='blue', name='projection')
             plot.update()
-            f[i, j] = eval_f(mesh)
+
+            area = proj.area
+            print(f'Area at x,y: {x, y}: {area}')
+            f[i, j] = area
 
     end = time.time()
-    plot.show()
-
-    # # surface plot
-    # x, y = np.meshgrid(ax, ay)
-    # surface = pv.StructuredGrid(x, y, f)
-    # surface.plot(show_edges=True, show_grid=True)
-    
     print(f'execution duration: {end-start} seconds')
+    # plot.show()
+
+    # surface plot
+    x, y = np.meshgrid(ax, ay)
+    surface = pv.StructuredGrid(x, y, f)
+    surface.plot(show_edges=True, show_grid=True)
 
 
 if __name__ == "__main__":
