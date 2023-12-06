@@ -42,14 +42,12 @@ def main():
     start = time.time()
     for i, y in enumerate(ax):
         for j, x in enumerate(ay):
-            time.sleep(0.001)
+            time.sleep(0.01)
             tfm.Identity()
             tfm.RotateX(x)
             tfm.RotateY(y)
             mesh.transform(tfm)
 
-            # mesh.rotate_x(x, abs=True)
-            # mesh.rotate_y(y, abs=True)
             proj = mesh.project_points_to_plane(origin=proj_origin)
             plot.add_mesh(proj, color='blue', name='projection')
             plot.update()

@@ -1,38 +1,51 @@
 from typing import Callable
 import pyvista as pv
 import numpy as np
+from vtk import vtkTransform
 
 
 class Mesh:
 
     def __init__(self, file, x=0, y=0) -> None:
         self.data = pv.read(file)
-        self.rot_x = x
-        self.rot_y = y
+        self.tfm = vtkTransform()
+
+        # (re)set rotation matrix
+        self.tfm.Identity()
+        self.tfm.PostMultiply()
+        self.tfm.RotateX(x)
+        self.tfm.RotateY(y)
 
     def get_orientation(self) -> tuple:
-        return self.rot_x, self.rot_y
+        return self.tfm.GetOrientation()
 
     def __getattr__(self, attr) -> Callable:
         return getattr(self.data, attr)
 
-    def rotate_x(self, angle, point=(0, 0, 0), abs=False) -> None:
+    def rotate_x(self, angle, abs=False) -> None:
         if abs:
-            a = angle - self.rot_x
+            o = self.get_orientation()
+
+            # reset orientation
+            self.tfm.Identity()
+            self.tfm.RotateX(angle)
+            self.tfm.RotateY(o[1])
         else:
-            a = angle
+            self.tfm.RotateX(angle)
+        self.data.transform(self.tfm, inplace=True)  # type: ignore
 
-        self.data.rotate_x(a, point=point, inplace=True)  # type: ignore
-        self.rot_x = self.rot_x + a
-
-    def rotate_y(self, angle, point=(0, 0, 0), abs=False) -> None:
+    def rotate_y(self, angle, abs=False) -> None:
         if abs:
-            a = angle - self.rot_y
-        else:
-            a = angle
+            o = self.get_orientation()
 
-        self.data.rotate_y(a, point=point, inplace=True)  # type: ignore
-        self.rot_y = self.rot_y + a
+            # reset orientation
+            self.tfm.Identity()
+            self.tfm.RotateX(o[0])
+            self.tfm.RotateY(angle)
+        else:
+            self.tfm.RotateY(angle)
+
+        self.data.transform(self.tfm, inplace=True)  # type: ignore
 
     def move_cog_to(self, point=[0, 0, 0]) -> np.ndarray:
         """Moves the center of mass to its origin
