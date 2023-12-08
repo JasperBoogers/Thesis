@@ -13,24 +13,28 @@ def eval_f(model: Mesh, plane):
 
 
 def main():
-    # load parameters
+    # set parameters
     FILENAME = par['Filepath']
     NUM_IT = par['Res angle']
     MAX_ANGLE = par['Max angle']
     ORIGIN = par['Origin']
-    proj_origin = [0, 0, -20]
+    PROJ_OFFSET = -5
+    REDUCTION = par['Resolution reduction']
 
     # create a pv Plotter and show origin
     plot = pv.Plotter()  # type: ignore
     plot.add_axes_at_origin()
 
-    # create a mesh, move the CoG to the origin and add to plotter
+    # create a mesh
     mesh = Mesh(FILENAME)
-    _ = mesh.move_cog_to(ORIGIN)
-    plot.add_mesh(mesh.data, color='green', name='object')
+    # move the "center" to the origin, decimate, and add to plotter
+    mesh.decimate_pro(REDUCTION)
+    _ = mesh.move_center_to(ORIGIN)
+    plot.add_mesh(mesh.data,  show_edges=True, color='green', name='object')
 
     # create a projection of the mesh on the xy plane,
     # add to plotter and show plot
+    proj_origin = [0, 0, mesh.bounds[-2] + PROJ_OFFSET]  # type: ignore
     proj = mesh.project_points_to_plane(origin=proj_origin)
     plot.add_mesh(proj, color='blue', name='projection')
     plot.show(interactive_update=True)
@@ -39,14 +43,12 @@ def main():
     ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, NUM_IT)
     f = np.zeros((ax.shape[0], ay.shape[0]))
     rot = Rotation.from_matrix(np.identity(3))
-    tfm = np.zeros((4, 4))
-    tfm[:-1, :-1] = rot.as_matrix()
-    tfm[-1, -1] = 1
+    tfm = np.identity(4)
 
     start = time.time()
-    for i, y in enumerate(ax):
-        for j, x in enumerate(ay):
-            time.sleep(0.01)
+    for i, x in enumerate(ax):
+        for j, y in enumerate(ay):
+            # time.sleep(0.01)
 
             # get inverse orientation and transform back to initial config
             inv_or = rot.inv()
@@ -60,12 +62,13 @@ def main():
 
             plot.update()
 
+            proj_origin = [0, 0, mesh.bounds[-2] + PROJ_OFFSET]  # type: ignore
             proj = mesh.project_points_to_plane(origin=proj_origin)
             plot.add_mesh(proj, color='blue', name='projection')
             plot.update()
 
             area = proj.area
-            print(f'Area at x,y: {x, y}: {area}')
+            # print(f'Area at x,y: {x, y}: {area}')
             f[i, j] = area
 
     end = time.time()
