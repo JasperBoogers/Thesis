@@ -1,11 +1,12 @@
 numpy
 pandas
 matplotlib
+scipy
 
 vtk
 numpy-stl
 pyvista
 
-scipy
+imageio
 
 jax
