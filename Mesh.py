@@ -8,6 +8,7 @@ class Mesh:
 
     def __init__(self, file, x=0, y=0) -> None:
         self.data = pv.read(file)
+        self.data.clean(inplace=True)  # type: ignore
         self.tfm = vtkTransform()
 
         # (re)set rotation matrix
@@ -58,5 +59,36 @@ class Mesh:
         self.move_to(loc)
         return cog
 
+    def move_center_to(self, point=[0, 0, 0]) -> np.ndarray:
+        if type(point) is not np.ndarray:
+            point = np.array(point)
+
+        cent = np.array(self.data.center)  # type: ignore
+        loc = point - cent
+        self.move_to(loc)
+        return cent
+
     def move_to(self, p) -> None:
         self.data.translate(p, inplace=True)  # type: ignore
+
+    def decimate_pro(self, factor, top=True, inplace=True, log=True) -> None:
+        if log:
+            print(f'# of vertices: {self.data.n_cells}')  # type: ignore
+        self.data.decimate_pro(factor,  # type: ignore
+                               preserve_topology=top,
+                               inplace=inplace)
+
+        if log:
+            print(f'# of vertices: {self.data.n_cells}')  # type: ignore
+
+    def decimate(self, factor, preserve_volume=True, attribute=True,
+                 inplace=True, log=True) -> None:
+        if log:
+            print(f'# of vertices: {self.data.n_cells}')  # type: ignore
+        self.data.decimate(factor,  # type: ignore
+                           volume_preservation=preserve_volume,
+                           attribute_error=attribute,
+                           inplace=inplace)
+
+        if log:
+            print(f'# of vertices: {self.data.n_cells}')  # type: ignore
