@@ -109,12 +109,13 @@ def main():
     print(f'execution duration: {end-start} seconds')
 
     # surface plot
-    x, y = np.meshgrid(ax, ay)
+    x, y = np.meshgrid(ax, ay, indexing='ij')
     surface = pv.StructuredGrid(x, y, f)
     surf_plot = pv.Plotter()  # type: ignore
     surf_plot.add_mesh(surface, scalars=surface.points[:, -1], show_edges=True,
                        scalar_bar_args={'vertical': True})
     surf_plot.set_scale(zscale=0.1)
+    surf_plot.add_title('3DBency - projected area')
     surf_plot.show_grid()
     surf_plot.show()
 
