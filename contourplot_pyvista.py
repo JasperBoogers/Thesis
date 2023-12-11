@@ -26,14 +26,15 @@ def main():
 
     # create a pv Plotter and show origin
     plot = pv.Plotter()  # type: ignore
-    plot.add_axes_at_origin()
+    # plot.add_axes_at_origin()
+    plot.add_axes(shaft_length=0.9)
 
     # create a mesh
     mesh = Mesh(FILENAME)
     # move the "center" to the origin, decimate, and add to plotter
     mesh.decimate_pro(REDUCTION)
     _ = mesh.move_center_to(ORIGIN)
-    plot.add_mesh(mesh.data,  show_edges=True, color='green', name='object')
+    plot.add_mesh(mesh.data, show_edges=True, color='green', name='object')
 
     # create a projection of the mesh on the xy plane,
     # add to plotter and show plot
@@ -74,6 +75,8 @@ def main():
 
             # update the plot and write to file
             plot.update()
+            if gif:
+                plot.write_frame()
             meshes.append(mesh.data.copy())  # type: ignore
 
             area = proj.area
@@ -89,21 +92,25 @@ def main():
     x = ax[opt_idx[0]]
     y = ay[opt_idx[1]]
     print(f'optimal orientation at {x, y} degrees, f={f[opt_idx]}')
-    # get inverse orientation and transform back to initial config
-    inv_or = rot.inv()
-    tfm[:-1, :-1] = inv_or.as_matrix()
-    mesh.transform(tfm)
 
-    # now do a new rotation based on Euler angles
-    rot = Rotation.from_euler('XYZ', [x, y, 0], True)
-    tfm[:-1, :-1] = rot.as_matrix()
-    mesh.transform(tfm)
+    if gif:
+        plot.close()
+    else:
+        # get inverse orientation and transform back to initial config
+        inv_or = rot.inv()
+        tfm[:-1, :-1] = inv_or.as_matrix()
+        mesh.transform(tfm)
 
-    # project the mesh to the z plane
-    proj_origin = [0, 0, mesh.bounds[-2] + PROJ_OFFSET]  # type: ignore
-    proj = mesh.project_points_to_plane(origin=proj_origin)
-    plot.add_mesh(proj, color='blue', name='projection')
-    plot.update()
+        # now do a new rotation based on Euler angles
+        rot = Rotation.from_euler('XYZ', [x, y, 0], True)
+        tfm[:-1, :-1] = rot.as_matrix()
+        mesh.transform(tfm)
+
+        # project the mesh to the z plane
+        proj_origin = [0, 0, mesh.bounds[-2] + PROJ_OFFSET]  # type: ignore
+        proj = mesh.project_points_to_plane(origin=proj_origin)
+        plot.add_mesh(proj, color='blue', name='projection')
+        plot.update()
 
     end = time.time()
     print(f'execution duration: {end-start} seconds')
