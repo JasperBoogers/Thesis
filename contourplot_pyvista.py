@@ -64,7 +64,7 @@ def main():
             mesh.transform(tfm)
 
             # now do a new rotation based on Euler angles
-            rot = Rotation.from_euler('XYZ', [x, y, 0], True)
+            rot = Rotation.from_euler('xyz', [x, y, 0], True)
             tfm[:-1, :-1] = rot.as_matrix()
             mesh.transform(tfm)
 
