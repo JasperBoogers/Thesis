@@ -39,7 +39,9 @@ dSdt_sub = subs(dSdt, [x1, y1, x2, y2, x3, y3, x4, y4], points_val);
 figure(1);
 subplot(1, 2, 1);
 fplot(S_sub, [0, pi/2]);
+xlabel('Angle (rad)')
 title('Support volume')
 subplot(1, 2, 2);
 fplot(dSdt_sub, [0, pi/2]);
+xlabel('Angle (rad)')
 title('Derivative of support volume')

@@ -3,7 +3,7 @@ import numpy as np
 from scipy.optimize import minimize
 import time
 import jax.numpy as jnp
-from jax import grad, value_and_grad, jit
+from jax import value_and_grad, jit
 
 
 def support_2D_Euler(t, pts, proj):
