@@ -14,7 +14,7 @@
     "python.formatting.provider": "none",
     "python.languageServer": "Pylance",
     "python.analysis.autoFormatStrings": true,
-    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoImportCompletions": false,
     "python.analysis.typeCheckingMode": "basic"
 
 }

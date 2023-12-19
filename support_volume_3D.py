@@ -18,8 +18,9 @@ plot.add_axes(shaft_length=0.9)
 plot.add_axes_at_origin()
 
 # create mesh
-mesh = pv.read('Geometries/cube.stl')  # type: ignore
-mesh.compute_normals(inplace=True)  # type: ignore
+mesh = pv.read('Geometries/cube.stl')
+assert mesh is not None
+mesh.compute_normals(inplace=True)
 
 # rotate mesh and add to plot
 tfm = np.identity(4)
@@ -32,11 +33,14 @@ plot.show(interactive_update=True)
 # calc support volume, plane size should exceed model bounds! #TODO
 plane = pv.Plane(center=(0, 0, PROJ), i_size=10, j_size=10, direction=(0, 0, 1))
 
-overhang_idx = np.arange(mesh.n_cells)[mesh['Normals'][:, 2] < 0.0]
+overhang_idx = np.arange(mesh.n_cells)[mesh['Normals'][:, 2] < 0.0]  # type: ignore
 overhang = mesh.extract_cells(overhang_idx)
+assert overhang is not None
 overhang = overhang.extract_surface()
+assert overhang is not None
 
 SV = overhang.extrude_trim((0, 0, -1), plane)
+assert SV is not None
 SV.triangulate(inplace=True)
 SV.compute_normals(inplace=True, flip_normals=True)
 plot.add_mesh(SV, opacity=0.5, color='red', show_edges=True)
