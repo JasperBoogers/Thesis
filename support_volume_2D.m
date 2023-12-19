@@ -10,7 +10,7 @@ p4 = [x4; y4];
 points = [p1, p2, p3, p4];
 points_val = [-1, -1, 1, -1, 1, 1, -1, 1];
 
-plane = -4;
+plane = -2;
 
 %% rotate and extract points
 R = [cos(theta), -sin(theta); sin(theta), cos(theta)];
