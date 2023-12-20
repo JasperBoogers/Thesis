@@ -115,7 +115,44 @@ def main():
 
 
 def grid_search():
-    
+    # set parameters
+    OVERHANG_THRESHOLD = 0.0
+    PLANE_OFFSET = 1.0
+    FILE = 'Geometries/cube.stl'
+
+    # create mesh and clean
+    mesh = pv.read(FILE)
+    mesh = prep_mesh(mesh)
+
+    # iteration parameters
+    MAX_ANGLE = np.deg2rad(90)
+    NUM_IT = 20
+    ax = ay = np.linspace(0, MAX_ANGLE, NUM_IT)
+    f = np.zeros((ax.shape[0], ay.shape[0]))
+
+    start = time()
+    for i, x in enumerate(ax):
+        for j, y in enumerate(ay):
+            rot = rotate_mesh(mesh, [x, y, 0])
+            overhang = extract_overhang(rot, OVERHANG_THRESHOLD)
+            plane = construct_build_plane(rot, PLANE_OFFSET)
+            SV = construct_supports(overhang, plane)
+
+            pts = overhang.project_points_to_plane(origin=plane.center)
+            V_offset = pts.area*PLANE_OFFSET
+            f[j, i] = SV.volume-V_offset
+    end = time()
+
+    x, y = np.meshgrid(np.rad2deg(ax), np.rad2deg(ay))
+    surf = pv.StructuredGrid(x, y, f)
+    surf_plot = pv.Plotter()
+    surf_plot.add_mesh(surf, scalars=surf.points[:, -1], show_edges=True,
+                       scalar_bar_args={'vertical': True})
+    surf_plot.set_scale(zscale=5)
+    surf_plot.show_grid()
+    print(f'execution time: {end-start} seconds')
+    surf_plot.show()
+
 
 if __name__ == "__main__":
-    main()
+    grid_search()
