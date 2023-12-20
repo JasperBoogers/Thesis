@@ -54,7 +54,7 @@ def construct_supports(o, p):
 def support_3D_Euler(angles, msh, thresh, plane_offset=1.0) -> float:
 
     # rotate
-    msh = rotate_mesh(msh, np.append(angles, [0, 0]))
+    msh = rotate_mesh(msh, np.append(angles, 0))
 
     # extract overhanging surfaces
     overhang = extract_overhang(msh, thresh)
@@ -67,8 +67,9 @@ def support_3D_Euler(angles, msh, thresh, plane_offset=1.0) -> float:
     SV = construct_supports(overhang, plane)
 
     # now subtract the volume caused by the offset
-    b = SV.bounds
-    V_offset = (b[1] - b[0]) * (b[3] -b[2]) * (msh.bounds[-2] - b[-2])
+    pts = overhang.project_points_to_plane(origin=plane.center)
+    V_offset = pts.area*plane_offset
+    # V_offset = (b[1] - b[0]) * (b[3] - b[2]) * (msh.bounds[-2] - b[-2])
 
     return -(SV.volume-V_offset)
 
@@ -76,7 +77,7 @@ def support_3D_Euler(angles, msh, thresh, plane_offset=1.0) -> float:
 def main():
     # set parameters
     OVERHANG_THRESHOLD = 0.0
-    PLANE_OFFSET = 1.0
+    PLANE_OFFSET = 0
     FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
@@ -84,10 +85,10 @@ def main():
     mesh = prep_mesh(mesh)
 
     # optimize
-    a0 = [np.pi/5]
+    a0 = [np.deg2rad(44), np.deg2rad(44)]
     start = time()
 
-    y = minimize(support_3D_Euler, a0,
+    y = minimize(support_3D_Euler, a0, jac='3-point',
                  args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
     end = time()
     print(f'Computation time: {end-start} seconds')
@@ -99,18 +100,22 @@ def main():
     plot.add_axes()
 
     # reconstruct optimal orientation
-    mesh_rot = rotate_mesh(mesh, np.append(y.x, [0, 0]))
+    mesh_rot = rotate_mesh(mesh, [np.deg2rad(45), np.deg2rad(45), 0])
     overhang = extract_overhang(mesh_rot, OVERHANG_THRESHOLD)
     plane = construct_build_plane(mesh_rot, PLANE_OFFSET)
     SV = construct_supports(overhang, plane)
 
     # add original and rotated mesh, and support volume
     plot.add_mesh(mesh, opacity=0.2, color='green')
-    plot.add_mesh(mesh_rot, color='blue')
+    plot.add_mesh(mesh_rot, color='blue', opacity=0.5)
+    plot.add_mesh(plane, color='purple', opacity=0.5)
     plot.add_mesh(SV, opacity=0.5, color='red', show_edges=True)
     plot.show(interactive_update=True)
     print('finish')
 
+
+def grid_search():
+    
 
 if __name__ == "__main__":
     main()
