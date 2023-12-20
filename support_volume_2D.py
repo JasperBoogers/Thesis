@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     # set mesh and projection plane
     points = np.array([[-1, 1, 1, -1], [-1, -1, 1, 1]])
-    plane = -4
+    plane = 0
 
     # initial conditions
     t0 = [np.pi/10]
