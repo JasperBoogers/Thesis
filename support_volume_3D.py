@@ -1,7 +1,6 @@
 import numpy as np
 import pyvista as pv
 from time import time
-from os import path
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation
 
@@ -150,7 +149,11 @@ def grid_search():
                        scalar_bar_args={'vertical': True})
     surf_plot.set_scale(zscale=5)
     surf_plot.show_grid()
-    print(f'execution time: {end-start} seconds')
+
+    opt_idx = np.unravel_index(np.argmax(f), f.shape)
+    print(f'Execution time: {end-start} seconds')
+    print(f'Max volume: {f[opt_idx]} at '
+          f'{round(x[opt_idx], 1), round(y[opt_idx], 1)} degrees')
     surf_plot.show()
 
 
