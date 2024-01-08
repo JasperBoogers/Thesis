@@ -21,7 +21,7 @@ def prep_mesh(m, decimation=0.9, flip=False) -> pv.PolyData:
     return m
 
 
-def rotate_mesh(m, a):
+def rotate_mesh(m, a) -> pv.PolyData:
     # create rotation obj and rotate the mesh
     tfm = np.identity(4)
     rot = Rotation.from_euler('xyz', a)
@@ -29,13 +29,13 @@ def rotate_mesh(m, a):
     return m.transform(tfm, inplace=False)
 
 
-def extract_overhang(m, t):
+def extract_overhang(m, t) -> pv.PolyData:
     idx = np.arange(m.n_cells)[m['Normals'][:, 2] < t]
     overhang = m.extract_cells(idx)
     return overhang.extract_surface()
 
 
-def construct_build_plane(m, offset):
+def construct_build_plane(m, offset) -> pv.PolyData:
     bounds = m.bounds
     return pv.Plane(center=(0, 0, bounds[-2] - offset),
                     i_size=1.1*(bounds[1] - bounds[0]),
@@ -43,7 +43,7 @@ def construct_build_plane(m, offset):
                     direction=(0, 0, 1))
 
 
-def construct_supports(o, p):
+def construct_supports(o, p) -> pv.PolyData:
     SV = o.extrude_trim((0, 0, -1), p)
     SV.triangulate(inplace=True)
     SV.compute_normals(inplace=True, flip_normals=True)
@@ -59,7 +59,7 @@ def support_3D_Euler(angles, msh, thresh, plane_offset=1.0) -> float:
     overhang = extract_overhang(msh, thresh)
 
     # construct print bed plane based on lowest mesh point,
-    # add a offset to ensure proper triangulation
+    # add an offset to ensure proper triangulation
     plane = construct_build_plane(msh, plane_offset)
 
     # extrude overhanging surfaces to projection plane
@@ -84,14 +84,14 @@ def main():
     mesh = prep_mesh(mesh)
 
     # optimize
-    a0 = [np.deg2rad(44), np.deg2rad(44)]
+    a0 = np.array([np.deg2rad(40), np.deg2rad(30)])
     start = time()
 
     y = minimize(support_3D_Euler, a0, jac='3-point',
                  args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
     end = time()
     print(f'Computation time: {end-start} seconds')
-    print(f'Optimization terminated with succes: {y.success}')
+    print(f'Optimization terminated with success: {y.success}')
     print(f'Maximum support volume of {-y.fun} at {np.rad2deg(y.x)} degrees')
 
     # create a pv Plotter and show axis system
@@ -99,18 +99,17 @@ def main():
     plot.add_axes()
 
     # reconstruct optimal orientation
-    mesh_rot = rotate_mesh(mesh, [np.deg2rad(45), np.deg2rad(45), 0])
+    mesh_rot = rotate_mesh(mesh, [y.x[0], y.x[1], 0])
     overhang = extract_overhang(mesh_rot, OVERHANG_THRESHOLD)
     plane = construct_build_plane(mesh_rot, PLANE_OFFSET)
     SV = construct_supports(overhang, plane)
 
     # add original and rotated mesh, and support volume
-    plot.add_mesh(mesh, opacity=0.2, color='green')
-    plot.add_mesh(mesh_rot, color='blue', opacity=0.5)
+    # plot.add_mesh(mesh, opacity=0.2, color='blue')
+    plot.add_mesh(mesh_rot, color='green', opacity=0.5)
     plot.add_mesh(plane, color='purple', opacity=0.5)
     plot.add_mesh(SV, opacity=0.5, color='red', show_edges=True)
-    plot.show(interactive_update=True)
-    print('finish')
+    plot.show()
 
 
 def grid_search():
@@ -158,4 +157,5 @@ def grid_search():
 
 
 if __name__ == "__main__":
-    grid_search()
+    # grid_search()
+    main()
