@@ -21,10 +21,9 @@ def prep_mesh(m, decimation=0.9, flip=False) -> pv.PolyData:
     return m
 
 
-def rotate_mesh(m, a) -> pv.PolyData:
-    # create rotation obj and rotate the mesh
+def rotate_mesh(m, rot: Rotation) -> pv.PolyData:
+    # Rotate the mesh through the rotation obj R
     tfm = np.identity(4)
-    rot = Rotation.from_euler('xyz', a)
     tfm[:-1, :-1] = rot.as_matrix()
     return m.transform(tfm, inplace=False)
 
@@ -53,7 +52,8 @@ def construct_supports(o, p) -> pv.PolyData:
 def support_3D_Euler(angles, msh, thresh, plane_offset=1.0) -> float:
 
     # rotate
-    msh = rotate_mesh(msh, np.append(angles, 0))
+    R = Rotation.from_euler('xyz', np.append(angles, 0))
+    msh = rotate_mesh(msh, R)
 
     # extract overhanging surfaces
     overhang = extract_overhang(msh, thresh)
@@ -68,7 +68,6 @@ def support_3D_Euler(angles, msh, thresh, plane_offset=1.0) -> float:
     # now subtract the volume caused by the offset
     pts = overhang.project_points_to_plane(origin=plane.center)
     V_offset = pts.area*plane_offset
-    # V_offset = (b[1] - b[0]) * (b[3] - b[2]) * (msh.bounds[-2] - b[-2])
 
     return -(SV.volume-V_offset)
 
@@ -76,7 +75,7 @@ def support_3D_Euler(angles, msh, thresh, plane_offset=1.0) -> float:
 def main():
     # set parameters
     OVERHANG_THRESHOLD = 0.0
-    PLANE_OFFSET = 0
+    PLANE_OFFSET = 1.0
     FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
@@ -84,7 +83,7 @@ def main():
     mesh = prep_mesh(mesh)
 
     # optimize
-    a0 = np.array([np.deg2rad(40), np.deg2rad(30)])
+    a0 = np.array([np.deg2rad(1), np.deg2rad(1)])
     start = time()
 
     y = minimize(support_3D_Euler, a0, jac='3-point',
@@ -99,7 +98,8 @@ def main():
     plot.add_axes()
 
     # reconstruct optimal orientation
-    mesh_rot = rotate_mesh(mesh, [y.x[0], y.x[1], 0])
+    R = Rotation.from_euler('xyz', [y.x[0], y.x[1], 0])
+    mesh_rot = rotate_mesh(mesh, R)
     overhang = extract_overhang(mesh_rot, OVERHANG_THRESHOLD)
     plane = construct_build_plane(mesh_rot, PLANE_OFFSET)
     SV = construct_supports(overhang, plane)
@@ -124,8 +124,8 @@ def grid_search():
 
     # iteration parameters
     MAX_ANGLE = np.deg2rad(90)
-    NUM_IT = 20
-    ax = ay = np.linspace(0, MAX_ANGLE, NUM_IT)
+    NUM_IT = 21
+    ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, NUM_IT)
     f = np.zeros((ax.shape[0], ay.shape[0]))
 
     start = time()
