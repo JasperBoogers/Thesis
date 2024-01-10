@@ -2,8 +2,10 @@ import numpy as np
 import pyvista as pv
 from time import time
 from scipy.optimize import minimize
-from scipy.spatial.transform import Rotation
-
+from jax.scipy.spatial.transform import Rotation
+from jax import jit, grad
+import jax.numpy as jnp
+from vtk import vtkMatrix4x4
 
 def prep_mesh(m: pv.PolyData, decimation=0.9, flip=False) -> pv.PolyData:
     # ensure mesh is only triangles
@@ -23,13 +25,16 @@ def prep_mesh(m: pv.PolyData, decimation=0.9, flip=False) -> pv.PolyData:
 
 def rotate_mesh(m: pv.PolyData, rot: Rotation) -> pv.PolyData:
     # Rotate the mesh through the rotation obj R
-    tfm = np.identity(4)
-    tfm[:-1, :-1] = rot.as_matrix()
-    return m.transform(tfm, inplace=False)
+    tfm = rot.as_matrix()
+    mat = vtkMatrix4x4()
+    for i in range(3):
+        for j in range(3):
+            mat.SetElement(i, j, tfm.at[i, j].get())
+    return m.transform(mat, inplace=False)
 
 
 def extract_overhang(m: pv.PolyData, t: float) -> pv.PolyData:
-    idx = np.arange(m.n_cells)[m['Normals'][:, 2] < t]
+    idx = jnp.arange(m.n_cells)[m['Normals'][:, 2] < t]
     overhang = m.extract_cells(idx)
     return overhang.extract_surface()
 
@@ -49,10 +54,10 @@ def construct_supports(o: pv.PolyData, p: pv.PolyData) -> pv.PolyData:
     return SV
 
 
-def support_3D_Euler(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
+def support_3D_Euler(angles: jnp.array, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
 
     # rotate
-    R = Rotation.from_euler('xyz', np.append(angles, 0))
+    R = Rotation.from_euler('xyz', [jnp.asarray(angles)[0], jnp.asarray(angles)[1], 0])
     msh = rotate_mesh(msh, R)
 
     # extract overhanging surfaces
@@ -72,12 +77,16 @@ def support_3D_Euler(angles: list, msh: pv.PolyData, thresh: float, plane_offset
     return -(SV.volume-V_offset)
 
 
+def support_3D_Euler_grad(angles: jnp.array, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
+    return grad(support_3D_Euler, 0)(angles, msh, thresh, plane_offset)
+
+
 def main():
     # set parameters
     OVERHANG_THRESHOLD = 0.0
     PLANE_OFFSET = 1.0
-    NUM_START = 4
-    GRID = True
+    NUM_START = 1
+    GRID = False
     FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
@@ -92,15 +101,15 @@ def main():
         row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
         X0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
     else:
-        X0 = [np.deg2rad(1), np.deg2rad(1)]
+        X0 = jnp.array([jnp.deg2rad(10), jnp.deg2rad(10)])
 
     # run optimizer for every start
     res = []
     for i in range(NUM_START):
         start = time()
-        a0 = np.array(X0[i])
+        a0 = X0
         print(f'Start #{i + 1} of optimizer, x0={np.rad2deg(a0)}')
-        y = minimize(support_3D_Euler, a0, jac='3-point',
+        y = minimize(support_3D_Euler, a0, method='CG', jac=support_3D_Euler_grad,
                      args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
         end = time()
         print(f'Computation time: {end-start} seconds')
@@ -137,13 +146,13 @@ def grid_search(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=True,
         mesh = prep_mesh(mesh)
 
     # iteration parameters
-    ax = ay = np.linspace(-max_angle, max_angle, num_it)
-    f = np.zeros((ax.shape[0], ay.shape[0]))
+    ax = ay = jnp.linspace(-max_angle, max_angle, num_it)
+    f = jnp.zeros((ax.shape[0], ay.shape[0]))
 
     start = time()
     for i, x in enumerate(ax):
         for j, y in enumerate(ay):
-            f[j, i] = -support_3D_Euler([x, y], mesh, overhang_threshold, plane_offset)
+            f[j, i] = -support_3D_Euler(jnp.append(x, y), mesh, overhang_threshold, plane_offset)
     end = time()
 
     if plot:

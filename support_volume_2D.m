@@ -40,8 +40,8 @@ figure(1);
 subplot(1, 2, 1);
 fplot(S_sub, [0, pi/2]);
 xlabel('Angle (rad)')
-title('Support volume')
+title('Support area')
 subplot(1, 2, 2);
 fplot(dSdt_sub, [0, pi/2]);
 xlabel('Angle (rad)')
-title('Derivative of support volume')
+title('Derivative of support area')
