@@ -7,7 +7,7 @@ scipy
 vtk
 numpy-stl
 pyvista
-# pymeshfix
+pymeshfix==0.16.1
 
 imageio
 

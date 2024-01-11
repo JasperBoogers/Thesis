@@ -1,6 +1,10 @@
+from typing import Tuple
+
 import numpy as np
 import pyvista as pv
 from time import time
+
+from pyvista import PolyData
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation
 
@@ -37,8 +41,8 @@ def extract_overhang(m: pv.PolyData, t: float) -> pv.PolyData:
 def construct_build_plane(m: pv.PolyData, offset: float) -> pv.PolyData:
     bounds = m.bounds
     return pv.Plane(center=(0, 0, bounds[-2] - offset),
-                    i_size=1.1*(bounds[1] - bounds[0]),
-                    j_size=1.1*(bounds[3] - bounds[2]),
+                    i_size=1.1 * (bounds[1] - bounds[0]),
+                    j_size=1.1 * (bounds[3] - bounds[2]),
                     direction=(0, 0, 1))
 
 
@@ -49,27 +53,34 @@ def construct_supports(o: pv.PolyData, p: pv.PolyData) -> pv.PolyData:
     return SV
 
 
-def support_3D_Euler(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
-
-    # rotate
-    R = Rotation.from_euler('xyz', np.append(angles, 0))
-    msh = rotate_mesh(msh, R)
+def construct_support_volume(mesh: pv.PolyData, threshold: float, plane_offset: float = 1.0) -> tuple[
+        PolyData, PolyData, PolyData]:
 
     # extract overhanging surfaces
-    overhang = extract_overhang(msh, thresh)
+    overhang = extract_overhang(mesh, threshold)
 
     # construct print bed plane based on lowest mesh point,
     # add an offset to ensure proper triangulation
-    plane = construct_build_plane(msh, plane_offset)
+    plane = construct_build_plane(mesh, plane_offset)
 
     # extrude overhanging surfaces to projection plane
     SV = construct_supports(overhang, plane)
 
+    return overhang, plane, SV
+
+
+def support_3D_Euler(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
+    # rotate
+    R = Rotation.from_euler('xyz', np.append(angles, 0))
+    msh = rotate_mesh(msh, R)
+
+    overhang, plane, SV = construct_support_volume(msh, thresh, plane_offset)
+
     # now subtract the volume caused by the offset
     pts = overhang.project_points_to_plane(origin=plane.center)
-    V_offset = pts.area*plane_offset
+    V_offset = pts.area * plane_offset
 
-    return -(SV.volume-V_offset)
+    return -(SV.volume - V_offset)
 
 
 def main():
@@ -78,7 +89,7 @@ def main():
     PLANE_OFFSET = 1.0
     NUM_START = 4
     GRID = True
-    FILE = 'Geometries/cube.stl'
+    FILE = 'Geometries/bunny/Bunny.stl'
 
     # create mesh and clean
     mesh = pv.read(FILE)
@@ -103,7 +114,7 @@ def main():
         y = minimize(support_3D_Euler, a0, jac='3-point',
                      args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
         end = time()
-        print(f'Computation time: {end-start} seconds')
+        print(f'Computation time: {end - start} seconds')
         print(f'Optimization terminated with success: {y.success}')
         print(f'Maximum support volume of {-y.fun} at {np.rad2deg(y.x)} degrees')
         res.append(y)
@@ -129,7 +140,6 @@ def main():
 
 def grid_search(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=True,
                 overhang_threshold=0.0, plane_offset=1.0):
-
     # create mesh and clean
     if mesh is None:
         FILE = 'Geometries/cube.stl'
@@ -156,7 +166,7 @@ def grid_search(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=True,
         surf_plot.show_grid()
 
         opt_idx = np.unravel_index(np.argmax(f), f.shape)
-        print(f'Execution time: {end-start} seconds')
+        print(f'Execution time: {end - start} seconds')
         print(f'Max volume: {f[opt_idx]} at '
               f'{round(x[opt_idx], 1), round(y[opt_idx], 1)} degrees')
         surf_plot.show()
@@ -166,4 +176,4 @@ def grid_search(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=True,
 
 if __name__ == "__main__":
     # grid_search()
-    main()
+    # main()
