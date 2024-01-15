@@ -1,75 +1,16 @@
-from typing import Tuple
-
 import numpy as np
 import pyvista as pv
+import pymeshfix as mf
 from time import time
 
 from pyvista import PolyData
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation
 
-
-def prep_mesh(m: pv.PolyData, decimation=0.9, flip=False) -> pv.PolyData:
-    # ensure mesh is only triangles
-    m.triangulate(inplace=True)
-
-    # decimate mesh by decimate*100%
-    m.decimate_pro(decimation)
-
-    # (re)compute normals, and flip normal direction if needed
-    m.compute_normals(inplace=True, flip_normals=flip)
-
-    # move mesh center of bounding box to origin
-    center = np.array(m.center)
-    m.translate(-center, inplace=True)
-    return m
+from pyvista_functions import *
 
 
-def rotate_mesh(m: pv.PolyData, rot: Rotation) -> pv.PolyData:
-    # Rotate the mesh through the rotation obj R
-    tfm = np.identity(4)
-    tfm[:-1, :-1] = rot.as_matrix()
-    return m.transform(tfm, inplace=False)
-
-
-def extract_overhang(m: pv.PolyData, t: float) -> pv.PolyData:
-    idx = np.arange(m.n_cells)[m['Normals'][:, 2] < t]
-    overhang = m.extract_cells(idx)
-    return overhang.extract_surface()
-
-
-def construct_build_plane(m: pv.PolyData, offset: float) -> pv.PolyData:
-    bounds = m.bounds
-    return pv.Plane(center=(0, 0, bounds[-2] - offset),
-                    i_size=1.1 * (bounds[1] - bounds[0]),
-                    j_size=1.1 * (bounds[3] - bounds[2]),
-                    direction=(0, 0, 1))
-
-
-def construct_supports(o: pv.PolyData, p: pv.PolyData) -> pv.PolyData:
-    SV = o.extrude_trim((0, 0, -1), p)
-    SV.triangulate(inplace=True)
-    SV.compute_normals(inplace=True, flip_normals=True)
-    return SV
-
-
-def construct_support_volume(mesh: pv.PolyData, threshold: float, plane_offset: float = 1.0) -> tuple[
-        PolyData, PolyData, PolyData]:
-
-    # extract overhanging surfaces
-    overhang = extract_overhang(mesh, threshold)
-
-    # construct print bed plane based on lowest mesh point,
-    # add an offset to ensure proper triangulation
-    plane = construct_build_plane(mesh, plane_offset)
-
-    # extrude overhanging surfaces to projection plane
-    SV = construct_supports(overhang, plane)
-
-    return overhang, plane, SV
-
-
-def support_3D_Euler(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
+def support_3D_pyvista(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
     # rotate
     R = Rotation.from_euler('xyz', np.append(angles, 0))
     msh = rotate_mesh(msh, R)
@@ -89,7 +30,7 @@ def main():
     PLANE_OFFSET = 1.0
     NUM_START = 4
     GRID = True
-    FILE = 'Geometries/bunny/Bunny.stl'
+    FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
     mesh = pv.read(FILE)
@@ -111,7 +52,7 @@ def main():
         start = time()
         a0 = np.array(X0[i])
         print(f'Start #{i + 1} of optimizer, x0={np.rad2deg(a0)}')
-        y = minimize(support_3D_Euler, a0, jac='3-point',
+        y = minimize(support_3D_pyvista, a0, jac='3-point',
                      args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
         end = time()
         print(f'Computation time: {end - start} seconds')
@@ -153,7 +94,7 @@ def grid_search(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=True,
     start = time()
     for i, x in enumerate(ax):
         for j, y in enumerate(ay):
-            f[j, i] = -support_3D_Euler([x, y], mesh, overhang_threshold, plane_offset)
+            f[j, i] = -support_3D_pyvista([x, y], mesh, overhang_threshold, plane_offset)
     end = time()
 
     if plot:
