@@ -10,5 +10,6 @@ pyvista
 pymeshfix==0.16.1
 
 imageio
+tqdm
 
 jax
