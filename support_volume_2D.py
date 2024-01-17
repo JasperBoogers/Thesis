@@ -7,11 +7,15 @@ from jax import value_and_grad, jit
 import matplotlib.pyplot as plt
 
 
-def support_2D_Euler(t, pts, fcs, n, proj):
+def support_2D_Euler(t, pts, fcs, norm, proj):
     t = t[0]
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+    dR = np.array([[-np.sin(t), -np.cos(t)], [np.cos(t), -np.sin(t)]])
+
+    # rotate points
     points_rot = R @ pts
-    normals_rot = R @ np.transpose(n)
+    dpoints = dR @ pts
+    normals_rot = R @ np.transpose(norm)
 
     # calculate face lengths
     lengths = [np.linalg.norm(pts[:, j] - pts[:, i]) for (i, j) in fcs]
@@ -24,60 +28,51 @@ def support_2D_Euler(t, pts, fcs, n, proj):
     downward_faces = fcs[overhang_idx]
 
     S = 0
+    dS = 0
+
     for idx in overhang_idx:
-        p1, p2 = points_rot[:, faces[idx][0]], points_rot[:, faces[idx][1]]
+
+        # extract points corresponding to idx
+        p1 = points_rot[:, fcs[idx][0]]
+        dp1 = dpoints[:, fcs[idx][0]]
+        p2 = points_rot[:, fcs[idx][1]]
+        dp2 = dpoints[:, fcs[idx][1]]
+
+        # calculate A & h, multiply to get S
         A = p2[0] - p1[0]
         # A = abs(lengths[idx] * np.cos(t))
         h = (p2[-1] + p1[-1])/2 - z_min
         S += A*h
 
-    return -S
+        # calculate dA & dh to get dS
+        dA = dp2[0] - dp1[0]
+        dh = (dp2[-1] + dp1[-1])/2
+        dS += (dA * h + A * dh)
 
-
-@jit
-def support_2D_jax(t, pts, proj):
-    t = t[0]
-    R = jnp.array([[jnp.cos(t), -jnp.sin(t)], [jnp.sin(t), jnp.cos(t)]])
-    points_rot = R @ pts
-
-    # extract points
-    p1, p2, p3, p4 = jnp.split(points_rot, 4, axis=1)
-
-    # calculate support volume
-    S1 = 0.5*(p1[0] - p4[0]) * (p4[1] - p1[1])
-    S2 = (p1[0] - p4[0]) * (p1[1] - proj)
-    S3 = (p2[0] - p1[0]) * (p1[1] - proj)
-    S4 = 0.5*(p2[0] - p1[0]) * (p2[1] - p1[1])
-    S = S1 + S2 + S3 + S4
-
-    # calculate derivative
-    # dSdt = 2*proj*np.sin(t) - 2*proj*np.cos(t)
-
-    # set correct dtypes for output
-    S = S[0]
-
-    return -S
-
-
-def support_2D_jax_grad(t, pts, plane):
-    return value_and_grad(support_2D_jax, 0)(t, pts, plane)
+    return -S, -dS
 
 
 if __name__ == "__main__":
 
     # set mesh and projection plane
-    points = np.array([[-1, 1, 1, -1], [-1, -1, 1, 1]])
-    faces = np.array([[0, 1], [1, 2], [2, 3], [3, 0]])
-    normals = np.array([[0, -1], [1, 0], [0, 1], [-1, 0]])
-    plane = 1
+    p = np.array([[-1, 1, 1, -1], [-1, -1, 1, 1]])
+    f = np.array([[0, 1], [1, 2], [2, 3], [3, 0]])
+    n = np.array([[0, -1], [1, 0], [0, 1], [-1, 0]])
+    plane = 0
 
     angles = np.linspace(-np.pi, np.pi, 101)
-    S = np.zeros_like(angles)
-    for n, angle in enumerate(angles):
-        S[n] = support_2D_Euler([angle], points, faces, normals, plane)
+    support = np.zeros_like(angles)
+    dSdt = np.zeros_like(angles)
+    for k, angle in enumerate(angles):
+        s, ds = support_2D_Euler([angle], p, f, n, plane)
+        support[k] = s
+        dSdt[k] = ds
 
     fig = plt.figure()
-    plt.plot(np.rad2deg(angles), S)
+    plt.plot((angles), support, 'r')
+    plt.plot((angles), dSdt, 'b')
+    plt.plot(angles, 2*dSdt, 'g')
+    plt.plot(angles, -np.sin(4*angles)/np.abs(np.cos(angles)*np.sin(angles)), 'r*')
     plt.show()
 
     # initial conditions
@@ -86,7 +81,7 @@ if __name__ == "__main__":
     print('Solve using Euler angles')
     start = time.time()
     res_euler = minimize(support_2D_Euler, t0, args=(points, faces, normals, plane),
-                         jac='3-point', options={'disp': True})
+                         jac=True, options={'disp': True})
     t_euler = time.time() - start
     print(res_euler)
     print(f'Execution time: {t_euler}')
