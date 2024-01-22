@@ -11,7 +11,7 @@ from pyvista_functions import *
 def support_3D_pyvista(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
     # rotate
     R = Rotation.from_euler('xyz', np.append(angles, 0))
-    msh = rotate_mesh(msh, R)
+    msh = rotate_mesh(msh, R.as_matrix())
 
     overhang, plane, SV = construct_support_volume(msh, thresh, plane_offset)
 
@@ -25,9 +25,9 @@ def support_3D_pyvista(angles: list, msh: pv.PolyData, thresh: float, plane_offs
 def main_pyvista():
     # set parameters
     OVERHANG_THRESHOLD = 0.0
-    PLANE_OFFSET = 1.0
+    PLANE_OFFSET = 0.0
     NUM_START = 1
-    GRID = False
+    GRID = True
     FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
@@ -129,7 +129,7 @@ def calc_dVda(p1, p2, p3, dp1, dp2, dp3):
 def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
     # rotate the mesh
     R = Rotation.from_euler('xyz', np.append(angles, 0))
-    msh = rotate_mesh(msh, R)
+    msh = rotate_mesh(msh, R.as_matrix())
 
     # define z-height of projection plane
     z_min = msh.bounds[-2] - plane_offset
@@ -176,4 +176,4 @@ def main_analytic():
 
 if __name__ == "__main__":
     # main_analytic()
-    grid_search_pyvista()
+    main_pyvista()

@@ -19,10 +19,14 @@ def prep_mesh(m: pv.PolyData | pv.DataSet, decimation=0.9, flip=False) -> pv.Pol
     return m
 
 
-def rotate_mesh(m: pv.PolyData | pv.DataSet, rot: Rotation) -> pv.DataSet:
+def rotate_mesh(m: pv.PolyData | pv.DataSet, rot: np.ndarray | Rotation) -> pv.DataSet:
     # Rotate the mesh through the rotation obj R
     tfm = np.identity(4)
-    tfm[:-1, :-1] = rot.as_matrix()
+
+    if isinstance(rot, np.ndarray):
+        tfm[:-1, :-1] = rot
+    else:
+        tfm[:-1, :-1] = rot.as_matrix()
     return m.transform(tfm, inplace=False)
 
 
@@ -48,8 +52,7 @@ def construct_supports(o: pv.PolyData | pv.DataSet, p: pv.PolyData) -> pv.PolyDa
 
 
 def construct_support_volume(mesh: pv.PolyData | pv.DataSet, threshold: float, plane_offset: float = 1.0) -> tuple[
-        pv.PolyData, pv.PolyData, pv.PolyData]:
-
+    pv.PolyData, pv.PolyData, pv.PolyData]:
     # extract overhanging surfaces
     overhang = extract_overhang(mesh, threshold)
 
