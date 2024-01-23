@@ -1,5 +1,7 @@
 # project specific files
 out/
+time_estimation/SuperSlicer
+time_estimation/gcodes
 
  Byte-compiled / optimized / DLL files
 __pycache__/
