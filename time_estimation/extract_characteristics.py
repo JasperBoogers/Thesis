@@ -1,68 +1,125 @@
-import pyvista as pv
+import os
 import numpy as np
 import pandas as pd
-from os import path, getcwd, listdir
-from datetime import datetime as dt
+import pyvista as pv
+import time
 
 
-def extract_characteristics(mesh: pv.DataSet | pv.PolyData) -> tuple[float, float, float]:
+def run_SuperSlicer(slicer, geometry, config, outfolder):
+    # build command
+    cmd = f'{slicer} -g {geometry} -o {outfolder} --load {config}'
+    os.system(f'cmd /c {cmd}')
 
-    if not mesh.is_all_triangles:
-        mesh = mesh.clean().triangulate()
+
+def extract_characteristics(m: pv.DataSet | pv.PolyData) -> tuple[float, float, float]:
+    if not m.is_all_triangles:
+        m = m.clean().triangulate()
 
     # (re)calculate metrics
-    mesh = mesh.compute_cell_sizes()
-    _ = mesh.set_active_scalars('Area')
+    m = m.compute_cell_sizes()
+    _ = m.set_active_scalars('Area')
 
-    volume = mesh.volume
-    area = sum(mesh.active_scalars)
-    height: float = mesh.bounds[-1] - mesh.bounds[-2]
+    volume = m.volume
+    area = sum(m.active_scalars)
+    height: float = m.bounds[-1] - m.bounds[-2]
 
     return volume, area, height
 
 
-if __name__ == '__main__':
-    cwd = getcwd()
-    PATH = path.join(cwd, 'Geometries')
-    files = listdir(PATH)
-    OUTFILE = 'time_estimation.xlsx'
+def extract_time(filename) -> float:
+    with open(filename, 'r') as f:
+        lines = f.readlines()
 
-    # check if OUTFILE exists, if not create an empty df
-    if path.isfile(path.join(cwd, OUTFILE)):
-        print('Found existing file ', OUTFILE)
-        df = pd.read_excel(OUTFILE)
-    else:
-        df = pd.DataFrame()
+        # find line containing print time and strip
+        fil = filter(lambda x: 'estimated printing time (normal mode)' in x, lines)
+        line = list(fil)[0]
+        line = line.strip('\n').split('=')[1]
 
-    # now check if new geometries have been added to Geometries dir
-    existing_geometries = list(df['File name'])
-    new_files = [file for file in files if file not in existing_geometries]
+        # split on space char, strip the first space and extract time
+        if 'h' in line:
+            hour, minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
+            tm = 3600 * hour + 60 * minute + sec
+        else:
+            minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
+            tm = 60 * minute + sec
+    return tm
 
-    if len(new_files) > 0:
-        print(f'Found {len(new_files)} new files')
 
-        volumes = []
-        areas = []
-        heights = []
+# define paths
+CWD = os.getcwd()
+SLICER_PATH = "SuperSlicer\\superslicer_console.exe"
+GEOMETRY_PATH = os.path.join(CWD, "Geometries")
+OUTDIR = './gcodes'
+CONFIG = "config.ini"
+OUTFILE = os.path.join(CWD, "time_estimation.xlsx")
+DF_COLUMNS = ["File name", "Volume [mm3]", "Area [mm2]", "Height [mm]", "Height^2 [mm2]", "Height^3 [mm3]", "Time [s]"]
 
-        for f in new_files:
-            m = pv.read(path.join(PATH, f))
-            v, a, h = extract_characteristics(m)
-            volumes.append(v)
-            areas.append(a)
-            heights.append(h)
+# get list of all geometries
+geometries = os.listdir(GEOMETRY_PATH)
+geometries = [g.strip('.stl') for g in geometries]
 
-        assert len(volumes) == len(new_files)
+# check if OUTFILE exists, if not create an empty df
+if os.path.isfile(OUTFILE):
+    print('Found existing file ', OUTFILE)
+    df = pd.read_excel(OUTFILE)
+else:
+    print('Creating new file ', OUTFILE)
+    df = pd.DataFrame(columns=DF_COLUMNS)
 
-        # construct DataFrame
-        data = {'File name': new_files, 'Volume [mm3]': volumes, 'Area [mm2]': areas, 'Height [mm]': heights}
-        new_df = pd.DataFrame(data)
+# define lists of data to extract
+files2append = []
+times2append = []
+volumes2append = []
+areas2append = []
+heights2append = []
 
-        # add extra polynomials
-        new_df['Height^2 [mm2]'] = new_df['Height [mm]']**2
-        new_df['Height^3 [mm3]'] = new_df['Height [mm]']**3
+# now check if new geometries have been added to Geometries dir
+existing_geometries = list(df['File name'])
+new_geometries = [file for file in geometries if file not in existing_geometries]
 
-        df = pd.concat([df, new_df], axis=0)
-        df.to_excel(OUTFILE, index=False)
-    else:
-        print('No new files')
+# empty the out folder
+for file in os.listdir(OUTDIR):
+    os.remove(os.path.join(OUTDIR, file))
+
+start = time.time()
+
+print(f'Generating G-code for {len(new_geometries)} files')
+for file in new_geometries:
+    fn = f'./Geometries/{file}.stl'
+    run_SuperSlicer(SLICER_PATH, fn, CONFIG, OUTDIR)
+
+# extract time and characteristics from new files
+for file in os.listdir(OUTDIR):
+    # get time
+    t = extract_time(os.path.join(OUTDIR, file))
+
+    # now extract characteristics for file
+    mesh = pv.read(os.path.join(GEOMETRY_PATH, file.strip('.gcode') + '.stl'))
+    v, a, h = extract_characteristics(mesh)
+
+    # append data
+    files2append.append(file.strip('.gcode'))
+    times2append.append(t)
+    volumes2append.append(v)
+    areas2append.append(a)
+    heights2append.append(h)
+
+print(f'Extraction took {time.time() - start} seconds')
+
+# construct new df and concat with existing df
+data = {'File name': files2append, 'Time [s]': times2append, 'Volume [mm3]': volumes2append, 'Area [mm2]': areas2append, 'Height [mm]': heights2append}
+for col in DF_COLUMNS:
+    if col not in ['File name', 'Time [s]', 'Volume [mm3]', 'Area [mm2]', 'Height [mm]']:
+        data[col] = len(files2append)*[np.nan]
+
+new_df = pd.DataFrame(data)
+new_df = pd.concat([df, new_df], axis=0, ignore_index=True)
+
+# add extra polynomials
+new_df['Height^2 [mm2]'] = new_df['Height [mm]']**2
+new_df['Height^3 [mm3]'] = new_df['Height [mm]']**3
+
+# save df
+new_df.to_excel('time_estimation_new.xlsx', index=False)
+
+print('finished')
