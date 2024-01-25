@@ -5,7 +5,7 @@ import pyvista as pv
 import time
 
 
-def run_SuperSlicer(slicer, geometry, config, outfolder):
+def run_SuperSlicer(slicer: str, geometry: str, config: str, outfolder: str):
     # build command
     cmd = f'{slicer} -g {geometry} -o {outfolder} --load {config}'
     os.system(f'cmd /c {cmd}')
@@ -26,7 +26,7 @@ def extract_characteristics(m: pv.DataSet | pv.PolyData) -> tuple[float, float, 
     return volume, area, height
 
 
-def extract_time(filename) -> float:
+def extract_time(filename: str) -> float:
     with open(filename, 'r') as f:
         lines = f.readlines()
 
@@ -45,81 +45,83 @@ def extract_time(filename) -> float:
     return tm
 
 
-# define paths
-CWD = os.getcwd()
-SLICER_PATH = "SuperSlicer\\superslicer_console.exe"
-GEOMETRY_PATH = os.path.join(CWD, "Geometries")
-OUTDIR = './gcodes'
-CONFIG = "config.ini"
-OUTFILE = os.path.join(CWD, "time_estimation.xlsx")
-DF_COLUMNS = ["File name", "Volume [mm3]", "Area [mm2]", "Height [mm]", "Height^2 [mm2]", "Height^3 [mm3]", "Time [s]"]
+if __name__ == '__main__':
 
-# get list of all geometries
-geometries = os.listdir(GEOMETRY_PATH)
-geometries = [g.strip('.stl') for g in geometries]
+    # define paths
+    CWD = os.getcwd()
+    SLICER_PATH = "SuperSlicer\\superslicer_console.exe"
+    GEOMETRY_PATH = os.path.join(CWD, "Geometries")
+    OUTDIR = './gcodes'
+    CONFIG = "config.ini"
+    OUTFILE = os.path.join(CWD, "time_estimation.xlsx")
+    DF_COLUMNS = ["File name", "Volume [mm3]", "Area [mm2]", "Height [mm]", "Height^2 [mm2]", "Height^3 [mm3]", "Time [s]"]
 
-# check if OUTFILE exists, if not create an empty df
-if os.path.isfile(OUTFILE):
-    print('Found existing file ', OUTFILE)
-    df = pd.read_excel(OUTFILE)
-else:
-    print('Creating new file ', OUTFILE)
-    df = pd.DataFrame(columns=DF_COLUMNS)
+    # get list of all geometries
+    geometries = os.listdir(GEOMETRY_PATH)
+    geometries = [g.strip('.stl') for g in geometries]
 
-# define lists of data to extract
-files2append = []
-times2append = []
-volumes2append = []
-areas2append = []
-heights2append = []
+    # check if OUTFILE exists, if not create an empty df
+    if os.path.isfile(OUTFILE):
+        print('Found existing file ', OUTFILE)
+        df = pd.read_excel(OUTFILE)
+    else:
+        print('Creating new file ', OUTFILE)
+        df = pd.DataFrame(columns=DF_COLUMNS)
 
-# now check if new geometries have been added to Geometries dir
-existing_geometries = list(df['File name'])
-new_geometries = [file for file in geometries if file not in existing_geometries]
+    # define lists of data to extract
+    files2append = []
+    times2append = []
+    volumes2append = []
+    areas2append = []
+    heights2append = []
 
-# empty the out folder
-for file in os.listdir(OUTDIR):
-    os.remove(os.path.join(OUTDIR, file))
+    # now check if new geometries have been added to Geometries dir
+    existing_geometries = list(df['File name'])
+    new_geometries = [file for file in geometries if file not in existing_geometries]
 
-start = time.time()
+    # empty the out folder
+    for file in os.listdir(OUTDIR):
+        os.remove(os.path.join(OUTDIR, file))
 
-print(f'Generating G-code for {len(new_geometries)} files')
-for file in new_geometries:
-    fn = f'./Geometries/{file}.stl'
-    run_SuperSlicer(SLICER_PATH, fn, CONFIG, OUTDIR)
+    start = time.time()
 
-# extract time and characteristics from new files
-for file in os.listdir(OUTDIR):
-    # get time
-    t = extract_time(os.path.join(OUTDIR, file))
+    print(f'Generating G-code for {len(new_geometries)} files')
+    for file in new_geometries:
+        fn = f'./Geometries/{file}.stl'
+        run_SuperSlicer(SLICER_PATH, fn, CONFIG, OUTDIR)
 
-    # now extract characteristics for file
-    mesh = pv.read(os.path.join(GEOMETRY_PATH, file.strip('.gcode') + '.stl'))
-    v, a, h = extract_characteristics(mesh)
+    # extract time and characteristics from new files
+    for file in os.listdir(OUTDIR):
+        # get time
+        t = extract_time(os.path.join(OUTDIR, file))
 
-    # append data
-    files2append.append(file.strip('.gcode'))
-    times2append.append(t)
-    volumes2append.append(v)
-    areas2append.append(a)
-    heights2append.append(h)
+        # now extract characteristics for file
+        mesh = pv.read(os.path.join(GEOMETRY_PATH, file.strip('.gcode') + '.stl'))
+        v, a, h = extract_characteristics(mesh)
 
-print(f'Extraction took {time.time() - start} seconds')
+        # append data
+        files2append.append(file.strip('.gcode'))
+        times2append.append(t)
+        volumes2append.append(v)
+        areas2append.append(a)
+        heights2append.append(h)
 
-# construct new df and concat with existing df
-data = {'File name': files2append, 'Time [s]': times2append, 'Volume [mm3]': volumes2append, 'Area [mm2]': areas2append, 'Height [mm]': heights2append}
-for col in DF_COLUMNS:
-    if col not in ['File name', 'Time [s]', 'Volume [mm3]', 'Area [mm2]', 'Height [mm]']:
-        data[col] = len(files2append)*[np.nan]
+    print(f'Extraction took {time.time() - start} seconds')
 
-new_df = pd.DataFrame(data)
-new_df = pd.concat([df, new_df], axis=0, ignore_index=True)
+    # construct new df and concat with existing df
+    data = {'File name': files2append, 'Time [s]': times2append, 'Volume [mm3]': volumes2append, 'Area [mm2]': areas2append, 'Height [mm]': heights2append}
+    for col in DF_COLUMNS:
+        if col not in ['File name', 'Time [s]', 'Volume [mm3]', 'Area [mm2]', 'Height [mm]']:
+            data[col] = len(files2append)*[np.nan]
 
-# add extra polynomials
-new_df['Height^2 [mm2]'] = new_df['Height [mm]']**2
-new_df['Height^3 [mm3]'] = new_df['Height [mm]']**3
+    new_df = pd.DataFrame(data)
+    new_df = pd.concat([df, new_df], axis=0, ignore_index=True)
 
-# save df
-new_df.to_excel('time_estimation_new.xlsx', index=False)
+    # add extra polynomials
+    new_df['Height^2 [mm2]'] = new_df['Height [mm]']**2
+    new_df['Height^3 [mm3]'] = new_df['Height [mm]']**3
 
-print('finished')
+    # save df
+    new_df.to_excel('time_estimation_new.xlsx', index=False)
+
+    print('finished')
