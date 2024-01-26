@@ -64,3 +64,14 @@ def construct_support_volume(mesh: pv.PolyData | pv.DataSet, threshold: float, p
     SV = construct_supports(overhang, plane)
 
     return overhang, plane, SV
+
+
+def make_surface_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray):
+    x, y = np.meshgrid(np.rad2deg(x), np.rad2deg(y))
+    surf = pv.StructuredGrid(x, y, f)
+    surf_plot = pv.Plotter()
+    surf_plot.add_mesh(surf, scalars=surf.points[:, -1], show_edges=True,
+                       scalar_bar_args={'vertical': True})
+    surf_plot.set_scale(zscale=5)
+    surf_plot.show_grid()
+    surf_plot.show()
