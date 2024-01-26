@@ -125,21 +125,10 @@ def calc_V(points, d):
 
 def calc_dVdx(points: np.ndarray, dpoints: np.ndarray, area: float, height: float) -> float:
 
-    def det(x1, y1, x2, y2):
-        return x1*y2 - y1*x2
-
     # extract points and derivatives
     p1, p2, p3 = points[0, :], points[1, :], points[2, :]
     dp1, dp2, dp3 = dpoints[0, :], dpoints[1, :], dpoints[2, :]
-    #
-    # det1 = det(dp1[0], p1[1], dp2[0], p2[1])
-    # det2 = det(p1[0], dp1[1], p2[0], dp2[1])
-    # det3 = det(dp2[0], p2[1], dp3[0], p3[1])
-    # det4 = det(p2[0], dp2[1], p3[0], dp3[1])
-    # det5 = det(dp3[0], p3[1], dp1[0], p1[1])
-    # det6 = det(p3[0], dp3[1], p1[0], dp1[1])
-    #
-    # dAdx = sum([det1, det2, det3, det4, det5, det6])/2
+
     dx1 = (p2[1] - p3[1]) * dp1[0]
     dx2 = (-p1[1] + p3[1]) * dp2[0]
     dx3 = (-p2[1] + p1[1]) * dp3[0]
@@ -155,10 +144,11 @@ def construct_skew(x, y, z):
     return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
 
 
-def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> tuple[float, list]:
+def cross_product(v1, v2) -> np.ndarray:
+    return np.cross(v1, v2)
 
-    def cross_product(v1, v2) -> np.ndarray:
-        return np.cross(v1, v2)
+
+def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> tuple[float, list]:
 
     # extract angles, construct rotation matrices for x and y rotations
     a, b = angles[0], angles[1]
@@ -184,14 +174,14 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     volume = 0.0
     dVda = 0.0
     dVdb = 0.0
-    i = 0
     for idx in overhang_idx:
         pts = msh_rot.extract_cells(idx).points
         pts0 = msh.extract_cells(idx).points
 
-        # check if cell connectivity is counterclockwise, if not switch p2 and p3
+        # check if cell connectivity is clockwise, if not switch p2 and p3
+        # this makes the projected connectivity counterclockwise!
         n_check = cross_product((pts[1, :] - pts[0, :]), (pts[2, :] - pts[0, :]))
-        if not np.allclose(msh_rot.cell_normals[idx], n_check/np.linalg.norm(n_check)):
+        if np.allclose(msh_rot.cell_normals[idx], n_check/np.linalg.norm(n_check)):
             pts = np.array([pts[0, :], pts[2, :], pts[1, :]])
             pts0 = np.array([pts0[0, :], pts0[2, :], pts0[1, :]])
 
@@ -206,14 +196,12 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
 
         # calculate derivatives
         dVda_ = calc_dVdx(pts, dpts_da, A, h)
-        # print(f'i: {i}')
-        # dVdb_ = calc_dVdx(pts, dpts_db, A, h)
+        dVdb_ = calc_dVdx(pts, dpts_db, A, h)
 
         dVda += dVda_
-        # dVdb += dVdb_
-        i += 1
+        dVdb += dVdb_
 
-    return -volume, [dVda, dVdb]
+    return -volume, [-dVda, -dVdb]
 
 
 def main_analytic():
@@ -228,7 +216,7 @@ def main_analytic():
     mesh = pv.read(FILE)
     mesh = prep_mesh(mesh)
 
-    angles = np.linspace(np.deg2rad(10), np.deg2rad(80), 10)
+    angles = np.linspace(np.deg2rad(-180), np.deg2rad(180), 100)
     f = []
     da = []
     db = []
