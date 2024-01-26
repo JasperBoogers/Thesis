@@ -96,19 +96,11 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
     end = time()
 
     if plot:
-        x, y = np.meshgrid(np.rad2deg(ax), np.rad2deg(ay))
-        surf = pv.StructuredGrid(x, y, f)
-        surf_plot = pv.Plotter()
-        surf_plot.add_mesh(surf, scalars=surf.points[:, -1], show_edges=True,
-                           scalar_bar_args={'vertical': True})
-        surf_plot.set_scale(zscale=5)
-        surf_plot.show_grid()
-
+        make_surface_plot(np.rad2deg(ax), np.rad2deg(ay), f)
         opt_idx = np.unravel_index(np.argmax(f), f.shape)
         print(f'Execution time: {end - start} seconds')
         print(f'Max volume: {f[opt_idx]} at '
               f'{round(x[opt_idx], 1), round(y[opt_idx], 1)} degrees')
-        surf_plot.show()
 
     return ax, ay, f
 
@@ -201,7 +193,7 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
         dVda += dVda_
         dVdb += dVdb_
 
-    return -volume, [-dVda, -dVdb]
+    return volume, [dVda, dVdb]
 
 
 def main_analytic():
@@ -210,7 +202,8 @@ def main_analytic():
     PLANE_OFFSET = 0
     NUM_START = 4
     GRID = True
-    FILE = 'Geometries/cube.stl'
+    MAX_ANGLE = np.deg2rad(180)
+    FILE = 'Geometries/chair.stl'
 
     # create mesh and clean
     mesh = pv.read(FILE)
@@ -221,7 +214,7 @@ def main_analytic():
     da = []
     db = []
     for a in angles:
-        f_, [da_, db_] = support_volume_analytic([a, 0], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        f_, [da_, db_] = support_volume_analytic([0, a], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
         f.append(f_)
         da.append(da_)
         db.append(db_)
@@ -232,14 +225,42 @@ def main_analytic():
     _ = plt.legend()
     plt.show()
 
-    a = np.array(np.deg2rad([10, 10]))
-    start = time()
-    y = minimize(support_volume_analytic, a, jac=True,
-                 args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
-    end = time() - start
-    print(y)
-    print(f'Optimal orientation at {np.rad2deg(y.x)}')
-    print(f'Computation time: {end} s')
+    # perform grid search
+    if GRID:
+        print(f'Perform grid search and extract {NUM_START} max values')
+
+        # grid search parameters
+        ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, 21)
+        f = np.zeros((ax.shape[0], ay.shape[0]))
+
+        for i, x in enumerate(ax):
+            for j, y in enumerate(ay):
+                f[j, i] = support_volume_analytic([x, y], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)[0]
+        flat_idx = np.argpartition(f.ravel(), -NUM_START)[-NUM_START:]
+        row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
+        x0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
+
+        make_surface_plot(np.rad2deg(ax), np.rad2deg(ay), f)
+    else:
+        x0 = [[np.deg2rad(30), np.deg2rad(40)]]
+
+    res = []
+    for i in range(NUM_START):
+        start = time()
+
+        # set initial condition
+        a = np.array(x0[i])
+        print(f'Iteration {i+1} with x0: {np.rad2deg(a)}')
+
+        y = minimize(support_volume_analytic, a, jac=True,
+                     args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
+        end = time() - start
+        print(y)
+        print(f'Optimal orientation at {np.rad2deg(y.x)}')
+        print(f'Computation time: {end} s')
+        res.append(y)
+
+    print('Finished')
 
 
 if __name__ == "__main__":
