@@ -158,7 +158,7 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     msh_rot = rotate_mesh(msh, R)
 
     # define z-height of projection plane
-    z_min = msh_rot.bounds[-2] - plane_offset
+    z_min = msh_rot.bounds[-2]
 
     # extract overhanging faces
     overhang_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] < thresh]
@@ -178,8 +178,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
 
         normal_a = np.array([0, normal[1], normal[2]])
         normal_b = np.array([normal[0], 0, normal[2]])
-        dAda = pts0.area*np.dot(dRda @ normal_a, -build_dir)
-        dAdb = pts0.area*np.dot(dRdb @ normal_b, -build_dir)
+        dAda = pts0.area*np.dot(dRda @ normal, -build_dir)
+        dAdb = pts0.area*np.dot(dRdb @ normal, -build_dir)
 
         dhda = sum(np.transpose(dRda @ np.transpose(pts0.points))[:, -1])/3
         dhdb = sum(np.transpose(dRdb @ np.transpose(pts0.points))[:, -1])/3
@@ -190,17 +190,17 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
         dVda += dVda_
         dVdb += dVdb_
 
-    return volume, [dVda, dVdb]
+    return -volume, [-dVda, -dVdb]
 
 
 def main_analytic():
     # set parameters
     OVERHANG_THRESHOLD = -1e-5
-    PLANE_OFFSET = 0
-    NUM_START = 4
-    GRID = True
+    PLANE_OFFSET = 50
+    NUM_START = 1
+    GRID = False
     MAX_ANGLE = np.deg2rad(180)
-    FILE = 'Geometries/cube.stl'
+    FILE = 'Geometries/chair.stl'
 
     # create mesh and clean
     mesh = pv.read(FILE)
@@ -212,15 +212,16 @@ def main_analytic():
     db = []
     for a in angles:
         f_, [da_, db_] = support_volume_analytic([0, a], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
-        f.append(f_)
-        da.append(da_)
-        db.append(db_)
+        f.append(-f_)
+        da.append(-da_)
+        db.append(-db_)
 
     _ = plt.plot(angles, f, 'b', label='Volume')
-    _ = plt.plot(angles, da, 'r', label='dVda')
-    _ = plt.plot(angles, db, 'g', label='dVdb')
-    plt.xlabel('Angle [rad]')
+    _ = plt.plot(angles, da, 'r', label='dV/da')
+    _ = plt.plot(angles, db, 'g', label='dV/db')
+    plt.xlabel('Rotation about y-axis [rad]')
     _ = plt.legend()
+    plt.savefig('out/supportvolume/Support3D_derivative.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
@@ -240,7 +241,7 @@ def main_analytic():
 
         make_surface_plot(np.rad2deg(ax), np.rad2deg(ay), f)
     else:
-        x0 = [[np.deg2rad(30), np.deg2rad(40)]]
+        x0 = [[0.48694686130641796, np.deg2rad(40)]]
 
     res = []
     for i in range(NUM_START):
