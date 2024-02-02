@@ -27,22 +27,24 @@ def extract_characteristics(m: pv.DataSet | pv.PolyData) -> tuple[float, float, 
 
 
 def extract_time(filename: str) -> float:
-    with open(filename, 'r') as f:
-        lines = f.readlines()
+    try:
+        with open(filename, 'r') as f:
+            lines = f.readlines()
 
-        # find line containing print time and strip
-        fil = filter(lambda x: 'estimated printing time (normal mode)' in x, lines)
-        line = list(fil)[0]
-        line = line.strip('\n').split('=')[1]
+            # find line containing print time and strip
+            fil = filter(lambda x: 'estimated printing time (normal mode)' in x, lines)
+            line = list(fil)[0]
+            line = line.strip('\n').split('=')[1]
 
-        # split on space char, strip the first space and extract time
-        if 'h' in line:
-            hour, minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
-            tm = 3600 * hour + 60 * minute + sec
-        else:
-            minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
-            tm = 60 * minute + sec
-    return tm
+            # split on space char, strip the first space and extract time
+            if 'h' in line:
+                hour, minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
+                tm = 3600 * hour + 60 * minute + sec
+            else:
+                minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
+                tm = 60 * minute + sec
+        return tm
+    except FileNotFoundError: pass
 
 
 if __name__ == '__main__':
@@ -58,7 +60,7 @@ if __name__ == '__main__':
 
     # get list of all geometries
     geometries = os.listdir(GEOMETRY_PATH)
-    geometries = [g.strip('.stl') for g in geometries]
+    geometries = [g.split('.')[0] for g in geometries]
 
     # check if OUTFILE exists, if not create an empty df
     if os.path.isfile(OUTFILE):
@@ -88,7 +90,8 @@ if __name__ == '__main__':
     print(f'Generating G-code for {len(new_geometries)} files')
     for file in new_geometries:
         fn = f'./Geometries/{file}.stl'
-        run_SuperSlicer(SLICER_PATH, fn, CONFIG, OUTDIR)
+        if os.path.isfile(fn):
+            run_SuperSlicer(SLICER_PATH, fn, CONFIG, OUTDIR)
 
     # extract time and characteristics from new files
     for file in os.listdir(OUTDIR):
@@ -96,11 +99,11 @@ if __name__ == '__main__':
         t = extract_time(os.path.join(OUTDIR, file))
 
         # now extract characteristics for file
-        mesh = pv.read(os.path.join(GEOMETRY_PATH, file.strip('.gcode') + '.stl'))
+        mesh = pv.read(os.path.join(GEOMETRY_PATH, file.split('.')[0] + '.stl'))
         v, a, h = extract_characteristics(mesh)
 
         # append data
-        files2append.append(file.strip('.gcode'))
+        files2append.append(file.split('.')[0])
         times2append.append(t)
         volumes2append.append(v)
         areas2append.append(a)
@@ -116,10 +119,6 @@ if __name__ == '__main__':
 
     new_df = pd.DataFrame(data)
     new_df = pd.concat([df, new_df], axis=0, ignore_index=True)
-
-    # add extra polynomials
-    new_df['Height^2 [mm2]'] = new_df['Height [mm]']**2
-    new_df['Height^3 [mm3]'] = new_df['Height [mm]']**3
 
     # save df
     new_df.to_excel('time_estimation_new.xlsx', index=False)

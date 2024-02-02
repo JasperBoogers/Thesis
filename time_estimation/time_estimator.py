@@ -1,21 +1,44 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from latex_params import latex_params
+plt.rcParams.update(latex_params['params'])
 
-
+# parameters
+TRAIN_RATIO = 0.8
 FILE = 'time_estimation.xlsx'
 df = pd.read_excel(FILE)
-print(df)
 
-A = df.drop(['File name', 'Time [s]'], axis=1).to_numpy()
-b = df['Time [s]'].to_numpy()
-x = np.linalg.lstsq(A, b, rcond=None)[0]
-print(x)
+# add polynomial data
+# df['Volume**2'] = df['Volume [mm3]']**2
+# df['Volume**3'] = df['Volume [mm3]']**3
+# df['Area**2'] = df['Area [mm2]']**2
+# df.drop(['Height^2 [mm2]', 'Height^3 [mm3]'], axis=1)
 
-n = 2
-y = x[n]*A[:, n] + x[n+1]*A[:, n] + x[n+2]*A[:, n]
+# distribute training and validation data according to train/validation ratio
+training_data = df.sample(frac=TRAIN_RATIO, axis=0)
+validation_data = df[~df['File name'].isin(training_data['File name'])]
 
-_ = plt.plot(A[:, n], b, 'o', label='Original')
-_ = plt.plot(A[:, n], y, 'r', label='Fitted line')
-_ = plt.legend()
+# select training data
+A = training_data.drop(['File name', 'Time [s]'], axis=1).to_numpy()
+b = training_data['Time [s]'].to_numpy()
+
+# select validation data
+validation_x = validation_data.drop(['File name', 'Time [s]'], axis=1).to_numpy()
+validation_y = validation_data['Time [s]'].to_numpy()
+
+# make RoM using LLSQ
+LLSQ = np.linalg.lstsq(A, b, rcond=None)
+x = LLSQ[0]
+print(f'Residuals: {LLSQ[1]}')
+model_y = validation_x @ x
+
+# plot
+fig = plt.figure()
+_ = plt.plot(model_y, validation_y, 'r.', label='Fitted line')
+_ = plt.axline((0, 0), slope=1)
+plt.xlabel('Slicer time [s]')
+plt.ylabel('Estimated time [s]')
+
+plt.savefig('estimation_fit.svg', format='svg', bbox_inches='tight')
 plt.show()
