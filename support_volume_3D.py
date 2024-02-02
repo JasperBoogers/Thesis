@@ -163,32 +163,29 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     # extract overhanging faces
     overhang_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] < thresh]
 
+    build_dir = np.array([0, 0, 1])
     volume = 0.0
     dVda = 0.0
     dVdb = 0.0
     for idx in overhang_idx:
         pts = msh_rot.extract_cells(idx).points
-        pts0 = msh.extract_cells(idx).points
+        pts0 = msh.extract_cells(idx)
+        normal = msh.cell_normals[idx]
 
-        # check if cell connectivity is clockwise, if not switch p2 and p3
-        # this makes the projected connectivity counterclockwise!
-        n_check = cross_product((pts[1, :] - pts[0, :]), (pts[2, :] - pts[0, :]))
-        if np.allclose(msh_rot.cell_normals[idx], n_check/np.linalg.norm(n_check)):
-            pts = np.array([pts[0, :], pts[2, :], pts[1, :]])
-            pts0 = np.array([pts0[0, :], pts0[2, :], pts0[1, :]])
-
-        # calculate support volume
-        A, h = calc_V(pts, z_min)
+        A = pts0.area*np.dot(R @ normal, -build_dir)
+        h = sum(pts[:, -1])/3 - z_min
         volume += A*h
 
-        # rotate points to obtain derivatives
-        # # transpose to reflect notation of pts -> points are sorted row wise
-        dpts_da = np.transpose(dRda @ np.transpose(pts0))
-        dpts_db = np.transpose(dRdb @ np.transpose(pts0))
+        normal_a = np.array([0, normal[1], normal[2]])
+        normal_b = np.array([normal[0], 0, normal[2]])
+        dAda = pts0.area*np.dot(dRda @ normal_a, -build_dir)
+        dAdb = pts0.area*np.dot(dRdb @ normal_b, -build_dir)
 
-        # calculate derivatives
-        dVda_ = calc_dVdx(pts, dpts_da, A, h)
-        dVdb_ = calc_dVdx(pts, dpts_db, A, h)
+        dhda = sum(np.transpose(dRda @ np.transpose(pts0.points))[:, -1])/3
+        dhdb = sum(np.transpose(dRdb @ np.transpose(pts0.points))[:, -1])/3
+
+        dVda_ = A*dhda + h*dAda
+        dVdb_ = A*dhdb + h*dAdb
 
         dVda += dVda_
         dVdb += dVdb_
@@ -203,13 +200,13 @@ def main_analytic():
     NUM_START = 4
     GRID = True
     MAX_ANGLE = np.deg2rad(180)
-    FILE = 'Geometries/chair.stl'
+    FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
     mesh = pv.read(FILE)
     mesh = prep_mesh(mesh)
 
-    angles = np.linspace(np.deg2rad(-180), np.deg2rad(180), 100)
+    angles = np.linspace(np.deg2rad(0), np.deg2rad(180), 201)
     f = []
     da = []
     db = []
@@ -222,6 +219,7 @@ def main_analytic():
     _ = plt.plot(angles, f, 'b', label='Volume')
     _ = plt.plot(angles, da, 'r', label='dVda')
     _ = plt.plot(angles, db, 'g', label='dVdb')
+    plt.xlabel('Angle [rad]')
     _ = plt.legend()
     plt.show()
 
