@@ -37,12 +37,12 @@ def support_2D_Euler(t, points, faces, normals, proj):
 
         # calculate A & h, multiply to get S
         A = p2[0] - p1[0]
-        h = (p2[-1] - p1[-1])/2 - z_min
+        h = (p2[-1] + p1[-1])/2 - z_min
         S += A*h
 
         # calculate dA & dh to get dS
         dA = dp2[0] - dp1[0]
-        dh = (dp2[-1] - dp1[-1])/2
+        dh = (dp2[-1] + dp1[-1])/2
         dS += (dA * h + A * dh)
 
     return -S, -dS
@@ -65,13 +65,25 @@ if __name__ == "__main__":
         dSdt[k] = ds
 
     fig = plt.figure()
-    plt.plot(angles, support, 'r')
-    plt.plot(angles, dSdt, 'b')
-    plt.plot(angles, 2*dSdt, 'g')
-    plt.plot(angles, -np.sin(4*angles)/np.abs(np.cos(angles)*np.sin(angles)), 'r.')
-    plt.legend(['Support volume', 'dSdt', 'Analytic'])
+    plt.plot(angles, 4*np.cos(angles)**2-2, 'b')
+    plt.plot(angles, np.sin(4*angles)/np.abs(np.cos(angles)*np.sin(angles)), 'r')
+    plt.xlabel('Angle [rad]')
+    plt.ylabel('Magnitude [-]')
+    plt.legend(['General solution', 'Specific solution'])
     plt.ylim([-4, 4])
-    plt.xlim([-2*np.pi, 2*np.pi])
+    plt.xlim([0, np.pi])
+    plt.savefig('out/supportvolume/2D_solution_comp.svg')
+    plt.show()
+
+    fig2 = plt.figure()
+    plt.plot(angles, -support, 'b')
+    plt.plot(angles, np.sin(4 * angles) / np.abs(np.cos(angles) * np.sin(angles)), 'r')
+    plt.xlabel('Angle [rad]')
+    plt.ylabel('Magnitude [-]')
+    plt.legend(['Area', 'dA/dtheta'])
+    plt.ylim([-4, 4])
+    plt.xlim([0, np.pi])
+    plt.savefig('out/supportvolume/2D_specific.svg')
     plt.show()
 
     # initial conditions
