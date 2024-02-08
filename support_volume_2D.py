@@ -29,13 +29,13 @@ def support_2D(t, points, faces, normals, proj):
     normals_rot = R @ np.transpose(normals)
 
     # determine the lowest point to project to
-    if proj > 0:
+    if proj > 0:  # fixed projection height
         z_min = np.array([0, -proj])
         dz_min = dR @ (np.transpose(R) @ z_min)
-    elif proj < 0:
+    elif proj < 0:  # projection height is the lowest point
         z_min = points_rot[:, np.argmin(points_rot[-1, :])]
         dz_min = dR @ (np.transpose(R) @ z_min)
-    else:
+    else:  # no projecting down
         z_min = [0]
         dz_min = [0]
 
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     p = np.array([[-1/2, 1/2, 1/2, -1/2], [-1/2, -1/2, 1/2, 1/2]])
     f = np.array([[0, 1], [1, 2], [2, 3], [3, 0]])
     n = np.array([[0, -1], [1, 0], [0, 1], [-1, 0]])
-    plane = 0
+    plane = -1
 
     step = 201
     angles = np.linspace(-1*np.pi, 1*np.pi, step)
@@ -98,13 +98,13 @@ if __name__ == "__main__":
     plt.plot(angles, support, 'g', label='Support')
     plt.plot(angles, dSdt, 'b.', label=r"Calculated derivative")
     plt.plot(angles[:-1], finite_differences(support, angles), 'r.', label='Finite difference')
-    # plt.plot(angles, lowest_z, 'r', label='Lowest y-coordinate')
+    plt.plot(angles, lowest_z, 'r', label='Lowest y-coordinate')
     # plt.plot(angles, np.sin(4*angles)/np.abs(np.cos(angles)*np.sin(angles)), 'r')
     plt.xlabel('Angle [rad]')
     plt.ylabel('Magnitude [-]')
     plt.title('Rotating a square - no projection')
     plt.legend(loc='upper right')
-    plt.savefig('out/supportvolume/2D_solution_no_proj.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/2D_solution_no_proj.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # initial conditions
