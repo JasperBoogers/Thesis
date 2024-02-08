@@ -6,6 +6,7 @@ from scipy.optimize import minimize, check_grad
 from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
 from pyvista_functions import *
+from support_volume_2D import finite_differences
 
 
 def support_3D_pyvista(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
@@ -158,7 +159,11 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     msh_rot = rotate_mesh(msh, R)
 
     # define z-height of projection plane
-    z_min = msh_rot.bounds[-2]
+    # z_min = msh_rot.bounds[-2]
+    z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
+    # z_min = np.array([0, 0, -2])
+    dzda = dRda @ (np.transpose(R) @ np.array([0, z_min[1], z_min[2]]))
+    dzdb = dRdb @ (np.transpose(R) @ np.array([z_min[0], 0, z_min[2]]))
 
     # extract overhanging faces
     overhang_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] < thresh]
@@ -172,8 +177,10 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
         pts0 = msh.extract_cells(idx)
         normal = msh.cell_normals[idx]
 
+        # normal has to be of unit length for area calculation
+        normal /= np.linalg.norm(normal)
         A = pts0.area*np.dot(R @ normal, -build_dir)
-        h = sum(pts[:, -1])/3 - z_min
+        h = sum(pts[:, -1])/3 - z_min[-1]
         volume += A*h
 
         normal_a = np.array([0, normal[1], normal[2]])
@@ -181,8 +188,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
         dAda = pts0.area*np.dot(dRda @ normal_a, -build_dir)
         dAdb = pts0.area*np.dot(dRdb @ normal_b, -build_dir)
 
-        dhda = sum(np.transpose(dRda @ np.transpose(pts0.points))[:, -1])/3
-        dhdb = sum(np.transpose(dRdb @ np.transpose(pts0.points))[:, -1])/3
+        dhda = sum((dRda @ np.transpose(pts0.points))[-1, :])/3 - dzda[-1]
+        dhdb = sum((dRdb @ np.transpose(pts0.points))[-1, :])/3 - dzdb[-1]
 
         dVda_ = A*dhda + h*dAda
         dVdb_ = A*dhdb + h*dAdb
@@ -200,7 +207,7 @@ def main_analytic():
     NUM_START = 1
     GRID = True
     MAX_ANGLE = np.deg2rad(180)
-    FILE = 'Geometries/beam.stl'
+    FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
     mesh = pv.read(FILE)
@@ -216,10 +223,11 @@ def main_analytic():
         da.append(-da_)
         db.append(-db_)
 
-    _ = plt.plot(angles, f, 'b', label='Volume')
-    _ = plt.plot(angles, da, 'r', label='Derivative')
-    # _ = plt.plot(angles, db, 'g', label='dV/db')
-    plt.xlabel('Rotation about x-axis [rad]')
+    _ = plt.plot(angles, f, 'g', label='Volume')
+    _ = plt.plot(angles, da, 'b.', label='dV/da')
+    _ = plt.plot(angles, db, 'k.', label='dV/db')
+    _ = plt.plot(angles[:-1], finite_differences(f, angles), 'r.', label='Finite differences')
+    plt.xlabel('Rotation about y-axis [rad]')
     _ = plt.legend()
     # plt.savefig('out/supportvolume/Support3D_derivative.svg', format='svg', bbox_inches='tight')
     plt.show()
