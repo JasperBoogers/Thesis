@@ -178,8 +178,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
 
         normal_a = np.array([0, normal[1], normal[2]])
         normal_b = np.array([normal[0], 0, normal[2]])
-        dAda = pts0.area*np.dot(dRda @ normal, -build_dir)
-        dAdb = pts0.area*np.dot(dRdb @ normal, -build_dir)
+        dAda = pts0.area*np.dot(dRda @ normal_a, -build_dir)
+        dAdb = pts0.area*np.dot(dRdb @ normal_b, -build_dir)
 
         dhda = sum(np.transpose(dRda @ np.transpose(pts0.points))[:, -1])/3
         dhdb = sum(np.transpose(dRdb @ np.transpose(pts0.points))[:, -1])/3
@@ -198,30 +198,30 @@ def main_analytic():
     OVERHANG_THRESHOLD = -1e-5
     PLANE_OFFSET = 50
     NUM_START = 1
-    GRID = False
+    GRID = True
     MAX_ANGLE = np.deg2rad(180)
-    FILE = 'Geometries/chair.stl'
+    FILE = 'Geometries/beam.stl'
 
     # create mesh and clean
     mesh = pv.read(FILE)
     mesh = prep_mesh(mesh)
 
-    angles = np.linspace(np.deg2rad(0), np.deg2rad(180), 201)
+    angles = np.linspace(np.deg2rad(-180), np.deg2rad(180), 201)
     f = []
     da = []
     db = []
     for a in angles:
-        f_, [da_, db_] = support_volume_analytic([0, a], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        f_, [da_, db_] = support_volume_analytic([a, 0], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
         f.append(-f_)
         da.append(-da_)
         db.append(-db_)
 
     _ = plt.plot(angles, f, 'b', label='Volume')
-    _ = plt.plot(angles, da, 'r', label='dV/da')
-    _ = plt.plot(angles, db, 'g', label='dV/db')
-    plt.xlabel('Rotation about y-axis [rad]')
+    _ = plt.plot(angles, da, 'r', label='Derivative')
+    # _ = plt.plot(angles, db, 'g', label='dV/db')
+    plt.xlabel('Rotation about x-axis [rad]')
     _ = plt.legend()
-    plt.savefig('out/supportvolume/Support3D_derivative.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/Support3D_derivative.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
@@ -239,7 +239,7 @@ def main_analytic():
         row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
         x0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
 
-        make_surface_plot(np.rad2deg(ax), np.rad2deg(ay), f)
+        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f)
     else:
         x0 = [[0.48694686130641796, np.deg2rad(40)]]
 
