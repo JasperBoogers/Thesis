@@ -11,10 +11,11 @@ FILE = 'time_estimation.xlsx'
 df = pd.read_excel(FILE)
 
 # add polynomial data
-# df['Volume**2'] = df['Volume [mm3]']**2
-# df['Volume**3'] = df['Volume [mm3]']**3
-# df['Area**2'] = df['Area [mm2]']**2
-# df.drop(['Height^2 [mm2]', 'Height^3 [mm3]'], axis=1)
+df['Volume**2'] = df['Volume [mm3]']**2
+# df['Volume**3'] = df['Volume [mm3]']**3  # too large -> rank deficiency
+df['Area**2'] = df['Area [mm2]']**2
+df['Height**2'] = df['Height [mm]']**2
+df['Height**3'] = df['Height [mm]']**3
 
 # distribute training and validation data according to train/validation ratio
 training_data = df
@@ -48,9 +49,9 @@ if SAVE:
 plt.show()
 
 fig = plt.figure()
-_ = plt.plot(model_y, 100*(model_y-validation_y)/validation_y, '.', label='Residuals')
+_ = plt.plot(model_y, model_y-validation_y, '.', label='Residuals')
 plt.xlabel('Estimated time [s]')
-plt.ylabel('Residual [%]')
+plt.ylabel('Residual [s]')
 plt.title('Residuals over estimated time ')
 if SAVE:
     plt.savefig('estimation_residuals.svg', format='svg', bbox_inches='tight')
