@@ -1,6 +1,6 @@
 latex_params = {
     'params': {
-        # 'text.usetex': True,
+        'text.usetex': False,
         # 'pgf.rcfonts': False,
         'font.family': 'arial',
         # 'text.latex.unicode': True},

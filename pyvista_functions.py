@@ -1,7 +1,7 @@
 import pyvista as pv
 import numpy as np
 from scipy.spatial.transform import Rotation
-
+from matplotlib import pyplot as plt
 
 def prep_mesh(m: pv.PolyData | pv.DataSet, decimation=0.9, flip=False) -> pv.PolyData:
     # ensure mesh is only triangles
@@ -75,3 +75,10 @@ def make_surface_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray):
     surf_plot.set_scale(zscale=5)
     surf_plot.show_grid()
     surf_plot.show()
+
+def make_contour_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray):
+    x, y = np.meshgrid(x, y)
+    fig = plt.figure()
+    cp = plt.contourf(x, y, f)
+    fig.colorbar(cp)
+    plt.show()
