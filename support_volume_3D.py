@@ -162,8 +162,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     # z_min = msh_rot.bounds[-2]
     z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
     # z_min = np.array([0, 0, -2])
-    dzda = dRda @ (np.transpose(R) @ np.array([0, z_min[1], z_min[2]]))
-    dzdb = dRdb @ (np.transpose(R) @ np.array([z_min[0], 0, z_min[2]]))
+    dzda = dRda @ (np.transpose(R) @ z_min)
+    dzdb = dRdb @ (np.transpose(R) @ z_min)
 
     # extract overhanging faces
     overhang_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] < thresh]
@@ -183,10 +183,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
         h = sum(pts[:, -1])/3 - z_min[-1]
         volume += A*h
 
-        normal_a = np.array([0, normal[1], normal[2]])
-        normal_b = np.array([normal[0], 0, normal[2]])
-        dAda = pts0.area*np.dot(dRda @ normal_a, -build_dir)
-        dAdb = pts0.area*np.dot(dRdb @ normal_b, -build_dir)
+        dAda = pts0.area*np.dot(dRda @ normal, -build_dir)
+        dAdb = pts0.area*np.dot(dRdb @ normal, -build_dir)
 
         dhda = sum((dRda @ np.transpose(pts0.points))[-1, :])/3 - dzda[-1]
         dhdb = sum((dRdb @ np.transpose(pts0.points))[-1, :])/3 - dzdb[-1]
@@ -205,20 +203,24 @@ def main_analytic():
     OVERHANG_THRESHOLD = -1e-5
     PLANE_OFFSET = 50
     NUM_START = 1
-    GRID = True
+    GRID = False
     MAX_ANGLE = np.deg2rad(180)
     FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
-    mesh = pv.read(FILE)
-    mesh = prep_mesh(mesh)
+    # mesh = pv.read(FILE)
+    # mesh = prep_mesh(mesh)
+    points = np.array([[-1 / 2, -np.sqrt(3)/6, 0], [1 / 2, -np.sqrt(3)/6, 0], [0, np.sqrt(3)/3, 0]])
+    mesh = prep_mesh(pv.Triangle(points), flip=True)  # flip normal to ensure downward facing
+    # cube = pv.Cube()
+    # mesh = prep_mesh(cube)
 
     angles = np.linspace(np.deg2rad(-180), np.deg2rad(180), 201)
     f = []
     da = []
     db = []
     for a in angles:
-        f_, [da_, db_] = support_volume_analytic([a, 0], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        f_, [da_, db_] = support_volume_analytic([0, a], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
         f.append(-f_)
         da.append(-da_)
         db.append(-db_)
@@ -227,9 +229,11 @@ def main_analytic():
     _ = plt.plot(angles, da, 'b.', label='dV/da')
     _ = plt.plot(angles, db, 'k.', label='dV/db')
     _ = plt.plot(angles[:-1], finite_differences(f, angles), 'r.', label='Finite differences')
-    plt.xlabel('Rotation about y-axis [rad]')
+    plt.xlabel('Angle [rad]')
+    plt.ylim([-0.3, 0.3])
+    plt.title('Single triangle facet - rotation about y-axis')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/Support3D_derivative.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/3D_triangle_roty.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
@@ -237,7 +241,7 @@ def main_analytic():
         print(f'Perform grid search and extract {NUM_START} max values')
 
         # grid search parameters
-        ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, 21)
+        ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, 40)
         f = np.zeros((ax.shape[0], ay.shape[0]))
 
         for i, x in enumerate(ax):
@@ -247,9 +251,9 @@ def main_analytic():
         row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
         x0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
 
-        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f)
+        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f)  #, 'out/supportvolume/3D_triangle_contour.svg')
     else:
-        x0 = [[0.48694686130641796, np.deg2rad(40)]]
+        x0 = [np.deg2rad([5, 5])]
 
     res = []
     for i in range(NUM_START):
@@ -257,13 +261,13 @@ def main_analytic():
 
         # set initial condition
         a = np.array(x0[i])
-        print(f'Iteration {i+1} with x0: {np.rad2deg(a)}')
+        print(f'Iteration {i+1} with x0: {np.rad2deg(a)} degrees')
 
         y = minimize(support_volume_analytic, a, jac=True,
                      args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
         end = time() - start
         print(y)
-        print(f'Optimal orientation at {np.rad2deg(y.x)}')
+        print(f'Optimal orientation at {np.rad2deg(y.x)} degrees')
         print(f'Computation time: {end} s')
         res.append(y)
 

@@ -76,9 +76,14 @@ def make_surface_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray):
     surf_plot.show_grid()
     surf_plot.show()
 
-def make_contour_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray):
+
+def make_contour_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray, save=None):
     x, y = np.meshgrid(x, y)
     fig = plt.figure()
     cp = plt.contourf(x, y, f)
     fig.colorbar(cp)
+    plt.xlabel('Rotation about x-axis [deg]')
+    plt.ylabel('Rotation about y-axis [deg]')
+    if save is not None:
+        plt.savefig(save, format='svg', bbox_inches='tight')
     plt.show()
