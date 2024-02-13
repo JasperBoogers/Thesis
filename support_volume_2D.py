@@ -81,7 +81,7 @@ if __name__ == "__main__":
     p = np.array([[-1/2, 1/2, 1/2, -1/2], [-1/2, -1/2, 1/2, 1/2]])
     f = np.array([[0, 1], [1, 2], [2, 3], [3, 0]])
     n = np.array([[0, -1], [1, 0], [0, 1], [-1, 0]])
-    plane = -1
+    plane = 0
 
     step = 201
     angles = np.linspace(-1*np.pi, 1*np.pi, step)
@@ -95,11 +95,12 @@ if __name__ == "__main__":
         lowest_z[k] = z
 
     fig = plt.figure()
-    plt.plot(angles, support, 'g', label='Support')
-    plt.plot(angles, dSdt, 'b.', label=r"Calculated derivative")
+    plt.plot(angles, support, 'b.', markersize=4, label='General solution')
+    plt.plot(angles, dSdt, 'g.', markersize=6, label=r"General derivative")
     plt.plot(angles[:-1], finite_differences(support, angles), 'r.', label='Finite difference')
-    plt.plot(angles, lowest_z, 'r', label='Lowest y-coordinate')
-    # plt.plot(angles, np.sin(4*angles)/np.abs(np.cos(angles)*np.sin(angles)), 'r')
+    # plt.plot(angles, lowest_z, 'r', label='Lowest y-coordinate')
+    # plt.plot(angles, np.abs(np.sin(angles)*np.cos(angles)), 'r', label='Specific solution')
+    # plt.plot(angles, np.sin(4*angles)/np.abs(2*np.sin(2*angles)), 'k', label='Specific derivative')
     plt.xlabel('Angle [rad]')
     plt.ylabel('Magnitude [-]')
     plt.title('Rotating a square - no projection')
