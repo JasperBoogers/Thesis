@@ -3,6 +3,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 from matplotlib import pyplot as plt
 
+
 def prep_mesh(m: pv.PolyData | pv.DataSet, decimation=0.9, flip=False) -> pv.PolyData:
     # ensure mesh is only triangles
     m.triangulate(inplace=True)
@@ -13,9 +14,8 @@ def prep_mesh(m: pv.PolyData | pv.DataSet, decimation=0.9, flip=False) -> pv.Pol
     # (re)compute normals, and flip normal direction if needed
     m.compute_normals(inplace=True, flip_normals=flip)
 
-    # move mesh center of bounding box to origin
-    center = np.array(m.center)
-    m.translate(-center, inplace=True)
+    # move mesh center of mass to origin
+    m.translate(-m.center_of_mass(), inplace=True)
     return m
 
 
