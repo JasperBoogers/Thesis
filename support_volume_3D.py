@@ -104,8 +104,7 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
     return ax, ay, f
 
 
-def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> tuple[float, list]:
-
+def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane=1.0) -> tuple[float, list]:
     # extract angles, construct rotation matrices for x and y rotations
     a, b = angles[0], angles[1]
     Rx = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
@@ -121,12 +120,15 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     # rotate mesh
     msh_rot = rotate_mesh(msh, R)
 
-    # define z-height of projection plane
-    # z_min = msh_rot.bounds[-2]
-    z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
-    # z_min = np.array([0, 0, -2])
-    dzda = dRda @ (np.transpose(R) @ z_min)
-    dzdb = dRdb @ (np.transpose(R) @ z_min)
+    # define z-height of projection plane for adaptive projection
+    # z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
+    # dzda = dRda @ (np.transpose(R) @ z_min)
+    # dzdb = dRdb @ (np.transpose(R) @ z_min)
+
+    # define z-height of projection plane for fixed projection height
+    z_min = np.array([0, 0, -plane])
+    dzda = dzdb = [0]
+
 
     # extract overhanging faces
     overhang_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] < thresh]
@@ -142,18 +144,18 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
 
         # normal has to be of unit length for area calculation
         normal /= np.linalg.norm(normal)
-        A = pts0.area*np.dot(R @ normal, -build_dir)
-        h = sum(pts[:, -1])/3 - z_min[-1]
-        volume += A*h
+        A = pts0.area * np.dot(R @ normal, -build_dir)
+        h = sum(pts[:, -1]) / 3 - z_min[-1]
+        volume += A * h
 
-        dAda = pts0.area*np.dot(dRda @ normal, -build_dir)
-        dAdb = pts0.area*np.dot(dRdb @ normal, -build_dir)
+        dAda = pts0.area * np.dot(dRda @ normal, -build_dir)
+        dAdb = pts0.area * np.dot(dRdb @ normal, -build_dir)
 
-        dhda = sum((dRda @ np.transpose(pts0.points))[-1, :])/3 - dzda[-1]
-        dhdb = sum((dRdb @ np.transpose(pts0.points))[-1, :])/3 - dzdb[-1]
+        dhda = sum((dRda @ np.transpose(pts0.points))[-1, :]) / 3 - dzda[-1]
+        dhdb = sum((dRdb @ np.transpose(pts0.points))[-1, :]) / 3 - dzdb[-1]
 
-        dVda_ = A*dhda + h*dAda
-        dVdb_ = A*dhdb + h*dAdb
+        dVda_ = A * dhda + h * dAda
+        dVdb_ = A * dhdb + h * dAdb
 
         dVda += dVda_
         dVdb += dVdb_
@@ -164,19 +166,21 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
 def main_analytic():
     # set parameters
     OVERHANG_THRESHOLD = -1e-5
-    PLANE_OFFSET = 50
     NUM_START = 1
-    GRID = False
+    GRID = True
     MAX_ANGLE = np.deg2rad(180)
     FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
     # mesh = pv.read(FILE)
     # mesh = prep_mesh(mesh)
-    points = np.array([[-1 / 2, -np.sqrt(3)/6, 0], [1 / 2, -np.sqrt(3)/6, 0], [0, np.sqrt(3)/3, 0]])
+    points = np.array([[-1 / 2, -np.sqrt(3) / 6, 0], [1 / 2, -np.sqrt(3) / 6, 0], [0, np.sqrt(3) / 3, 0]])
     mesh = prep_mesh(pv.Triangle(points), flip=True)  # flip normal to ensure downward facing
     # cube = pv.Cube()
     # mesh = prep_mesh(cube)
+
+    # set fixed projection distance
+    PLANE_OFFSET = calc_min_projection_distance(mesh)
 
     angles = np.linspace(np.deg2rad(-180), np.deg2rad(180), 201)
     f = []
@@ -188,11 +192,11 @@ def main_analytic():
         da.append(-da_)
         db.append(-db_)
 
-    _ = plt.plot(angles, f, 'g', label='Volume')
-    _ = plt.plot(angles, da, 'b.', label='dV/da')
-    _ = plt.plot(angles, db, 'k.', label='dV/db')
-    _ = plt.plot(angles[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
-    plt.xlabel('Angle [rad]')
+    _ = plt.plot(np.rad2deg(angles), f, 'g', label='Volume')
+    _ = plt.plot(np.rad2deg(angles), da, 'b.', label='dV/da')
+    _ = plt.plot(np.rad2deg(angles), db, 'k.', label='dV/db')
+    _ = plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
+    plt.xlabel('Angle [deg]')
     plt.ylim([-0.3, 0.3])
     plt.title('Single triangle facet - rotation about y-axis')
     _ = plt.legend()
@@ -214,7 +218,7 @@ def main_analytic():
         row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
         x0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
 
-        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f)   #, 'out/supportvolume/3D_triangle_contour.svg')
+        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f)  # , 'out/supportvolume/3D_triangle_contour.svg')
     else:
         x0 = [np.deg2rad([5, 5])]
 
@@ -224,7 +228,7 @@ def main_analytic():
 
         # set initial condition
         a = np.array(x0[i])
-        print(f'Iteration {i+1} with x0: {np.rad2deg(a)} degrees')
+        print(f'Iteration {i + 1} with x0: {np.rad2deg(a)} degrees')
 
         y = minimize(support_volume_analytic, a, jac=True,
                      args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
