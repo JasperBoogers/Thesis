@@ -129,7 +129,6 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
-
     # extract overhanging faces
     overhang_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] < thresh]
 
@@ -167,17 +166,17 @@ def main_analytic():
     # set parameters
     OVERHANG_THRESHOLD = -1e-5
     NUM_START = 1
-    GRID = True
+    GRID = False
     MAX_ANGLE = np.deg2rad(180)
     FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
     # mesh = pv.read(FILE)
     # mesh = prep_mesh(mesh)
-    points = np.array([[-1 / 2, -np.sqrt(3) / 6, 0], [1 / 2, -np.sqrt(3) / 6, 0], [0, np.sqrt(3) / 3, 0]])
-    mesh = prep_mesh(pv.Triangle(points), flip=True)  # flip normal to ensure downward facing
-    # cube = pv.Cube()
-    # mesh = prep_mesh(cube)
+    # points = np.array([[-1 / 2, -np.sqrt(3) / 6, 0], [1 / 2, -np.sqrt(3) / 6, 0], [0, np.sqrt(3) / 3, 0]])
+    # mesh = prep_mesh(pv.Triangle(points), flip=True)  # flip normal to ensure downward facing
+    cube = pv.Cube()
+    mesh = prep_mesh(cube)
 
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(mesh)
@@ -187,20 +186,20 @@ def main_analytic():
     da = []
     db = []
     for a in angles:
-        f_, [da_, db_] = support_volume_analytic([0, a], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        f_, [da_, db_] = support_volume_analytic([a, 0], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
         f.append(-f_)
         da.append(-da_)
         db.append(-db_)
 
     _ = plt.plot(np.rad2deg(angles), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(angles), da, 'b.', label='dV/da')
-    _ = plt.plot(np.rad2deg(angles), db, 'k.', label='dV/db')
+    _ = plt.plot(np.rad2deg(angles), da, 'b.', label=r'dV/d$\theta_x$')
+    _ = plt.plot(np.rad2deg(angles), db, 'k.', label=r'dV/d$\theta_y$')
     _ = plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
-    plt.ylim([-0.3, 0.3])
-    plt.title('Single triangle facet - rotation about y-axis')
+    # plt.ylim([-0.3, 0.3])
+    plt.title('Cube with fixed projection to y=-1 - rotation about x-axis')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/3D_triangle_roty.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/3D_cube_rotx_fixed_proj.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
@@ -218,7 +217,7 @@ def main_analytic():
         row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
         x0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
 
-        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f)  # , 'out/supportvolume/3D_triangle_contour.svg')
+        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f, 'Unit cube contour plot', 'out/supportvolume/3D_cube_contour.svg')
     else:
         x0 = [np.deg2rad([5, 5])]
 
