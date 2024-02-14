@@ -22,15 +22,15 @@ def support_2D(t, points, faces, normals, proj):
     normals_rot = R @ np.transpose(normals)
 
     # determine the lowest point to project to
-    if proj > 0:  # fixed projection height
-        z_min = np.array([0, -proj])
-        dz_min = dR @ (np.transpose(R) @ z_min)
-    elif proj < 0:  # projection height is the lowest point
-        z_min = points_rot[:, np.argmin(points_rot[-1, :])]
-        dz_min = dR @ (np.transpose(R) @ z_min)
-    else:  # no projecting down
+    if proj is None:  # no projecting down
         z_min = [0]
         dz_min = [0]
+    elif proj == 0:  # projection height is the lowest point
+        z_min = points_rot[:, np.argmin(points_rot[-1, :])]
+        dz_min = dR @ (np.transpose(R) @ z_min)
+    else:  # fixed projection height
+        z_min = np.array([0, -proj])
+        dz_min = dR @ (np.transpose(R) @ z_min)
 
     # identify downward facing normals
     overhang_idx = np.arange(faces.shape[0])[normals_rot[1, :] < -1e-6]
@@ -49,7 +49,7 @@ def support_2D(t, points, faces, normals, proj):
         A = p2[0] - p1[0]
         dA = dp2[0] - dp1[0]
 
-        if proj == 0:
+        if proj is None:
             # calculate h & dh, order of points matters!
             if p2[-1] < p1[-1]:
                 h = (p1[-1] - p2[-1])/2
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     p = np.array([[-1/2, 1/2, 1/2, -1/2], [-1/2, -1/2, 1/2, 1/2]])
     f = np.array([[0, 1], [1, 2], [2, 3], [3, 0]])
     n = np.array([[0, -1], [1, 0], [0, 1], [-1, 0]])
-    plane = 0
+    plane = 1
 
     step = 201
     angles = np.linspace(-1*np.pi, 1*np.pi, step)
@@ -88,17 +88,17 @@ if __name__ == "__main__":
         lowest_z[k] = z
 
     fig = plt.figure()
-    plt.plot(angles, support, 'b.', markersize=4, label='General solution')
-    plt.plot(angles, dSdt, 'g.', markersize=6, label=r"General derivative")
-    plt.plot(angles[:-1], finite_forward_differences(support, angles), 'r.', label='Finite difference')
+    plt.plot(np.rad2deg(angles), support, 'g', markersize=4, label='General solution')
+    plt.plot(np.rad2deg(angles), dSdt, 'b.', markersize=6, label=r"General derivative")
+    plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(support, angles), 'r.', label='Finite difference')
     # plt.plot(angles, lowest_z, 'r', label='Lowest y-coordinate')
     # plt.plot(angles, np.abs(np.sin(angles)*np.cos(angles)), 'r', label='Specific solution')
     # plt.plot(angles, np.sin(4*angles)/np.abs(2*np.sin(2*angles)), 'k', label='Specific derivative')
-    plt.xlabel('Angle [rad]')
+    plt.xlabel('Angle [deg]')
     plt.ylabel('Magnitude [-]')
-    plt.title('Rotating a square - no projection')
-    plt.legend(loc='upper right')
-    # plt.savefig('out/supportvolume/2D_solution_no_proj.svg', format='svg', bbox_inches='tight')
+    plt.title('Rotating a square - fixed projection to y=-1')
+    plt.legend()
+    # plt.savefig('out/supportvolume/2D_solution_fixed_proj.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # initial conditions
