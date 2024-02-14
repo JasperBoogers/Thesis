@@ -1,7 +1,7 @@
 clear; clc
 
 syms a b g real
-syms x1 y1 z1 x2 y2 z2 x3 y3 z3 k u v w real
+syms x1 y1 z1 x2 y2 z2 x3 y3 z3 u v w real
 
 P1 = [x1; y1];
 P2 = [x2; y2];
@@ -25,14 +25,14 @@ dRda = diff(Rxy, a);
 dRdb = diff(Rxy, b);
 
 %% 2D - fixed projection distance
-proj = [0; v];
+k = [0; v];
 
 % rotate points and take derivative
 p1 = R*P1;
 p2 = R*P2;
 dp1 = dR*P1;
 dp2 = dR*P2;
-dproj = dR*(R'*proj);
+dk = dR*(R'*k);
 
 % calculate area
 A1 = (p2(1)-p1(1))*(p2(2)-p1(2))/2;
@@ -53,14 +53,14 @@ dA = dA1 + dA2;
 
 %% 2D - projection to lowest point
 
-proj = [u; v];
+k = [u; v];
 
 % rotate points and take derivative
 p1 = R*P1;
 p2 = R*P2;
 dp1 = dR*P1;
 dp2 = dR*P2;
-dproj = dR*(R'*proj);
+dk = dR*(R'*k);
 
 % calculate area
 A1 = (p2(1)-p1(1))*(p2(2)-p1(2))/2;
@@ -83,10 +83,10 @@ P1_ = Rxy * P1;
 P2_ = Rxy * P2;
 P3_ = Rxy * P3;
 
-proj = [u; v; w];
-proj0 = Rxy'*proj;
-dproj_da = simplify(dRda*proj0);
-dproj_db = simplify(dRdb*proj0);
+k = [u; v; w];
+k0 = Rxy'*k;
+dk_da = simplify(dRda*k0)
+dk_db = simplify(dRdb*k0)
 
 % A0 = compute_A(P1_, P2_, P3_);
 % h = (P1_(3) + P2_(3) + P3_(3))/3 + 1.4142135381698608;
