@@ -1,19 +1,12 @@
-# from scipy.spatial.transform import Rotation
 import numpy as np
 from scipy.optimize import minimize
 import time
-import jax.numpy as jnp
-from jax import value_and_grad, jit
 from matplotlib import pyplot as plt
 import matplotlib as mpl
+from helpers import *
 from latex_params import latex_params
 # mpl.rcParams.update(latex_params['params'])
 mpl.rcParams['text.usetex'] = False
-
-
-def finite_differences(y, x):
-    h = (x[-1] - x[0])/len(x)
-    return np.diff(y)/h
 
 
 def support_2D(t, points, faces, normals, proj):
@@ -97,7 +90,7 @@ if __name__ == "__main__":
     fig = plt.figure()
     plt.plot(angles, support, 'b.', markersize=4, label='General solution')
     plt.plot(angles, dSdt, 'g.', markersize=6, label=r"General derivative")
-    plt.plot(angles[:-1], finite_differences(support, angles), 'r.', label='Finite difference')
+    plt.plot(angles[:-1], finite_forward_differences(support, angles), 'r.', label='Finite difference')
     # plt.plot(angles, lowest_z, 'r', label='Lowest y-coordinate')
     # plt.plot(angles, np.abs(np.sin(angles)*np.cos(angles)), 'r', label='Specific solution')
     # plt.plot(angles, np.sin(4*angles)/np.abs(2*np.sin(2*angles)), 'k', label='Specific derivative')

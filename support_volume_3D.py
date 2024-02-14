@@ -1,12 +1,10 @@
 import numpy as np
 import pyvista as pv
-import pymeshfix as mf
 from time import time
-from scipy.optimize import minimize, check_grad
+from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
-from pyvista_functions import *
-from support_volume_2D import finite_differences
+from helpers import *
 
 
 def support_3D_pyvista(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> float:
@@ -106,41 +104,6 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
     return ax, ay, f
 
 
-def calc_V(points, d):
-    p1, p2, p3 = points[0, :], points[1, :], points[2, :]
-    v1 = p1[0] * p2[1] - p2[0] * p1[1]
-    v2 = p2[0] * p3[1] - p3[0] * p2[1]
-    v3 = p3[0] * p1[1] - p1[0] * p3[1]
-    A = abs(v1 + v2 + v3) / 2
-    h = (p1[-1] + p2[-1] + p3[-1]) / 3 - d
-    return A, h
-
-
-def calc_dVdx(points: np.ndarray, dpoints: np.ndarray, area: float, height: float) -> float:
-
-    # extract points and derivatives
-    p1, p2, p3 = points[0, :], points[1, :], points[2, :]
-    dp1, dp2, dp3 = dpoints[0, :], dpoints[1, :], dpoints[2, :]
-
-    dx1 = (p2[1] - p3[1]) * dp1[0]
-    dx2 = (-p1[1] + p3[1]) * dp2[0]
-    dx3 = (-p2[1] + p1[1]) * dp3[0]
-    dy1 = (-p2[0] + p3[0]) * dp1[1]
-    dy2 = (p1[0] - p3[0]) * dp2[1]
-    dy3 = (p2[0] - p1[0]) * dp3[1]
-    dAdx = sum([dx1, dx2, dx3, dy1, dy2, dy3])/2
-    dhdx = sum([dp1[-1], dp2[-1], dp3[-1]])/3
-    return height*dAdx + area*dhdx
-
-
-def construct_skew(x, y, z):
-    return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
-
-
-def cross_product(v1, v2) -> np.ndarray:
-    return np.cross(v1, v2)
-
-
 def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane_offset=1.0) -> tuple[float, list]:
 
     # extract angles, construct rotation matrices for x and y rotations
@@ -150,8 +113,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     R = Ry @ Rx
 
     # construct derivatives of rotation matrices
-    dRx = construct_skew(1, 0, 0) @ Rx
-    dRy = construct_skew(0, 1, 0) @ Ry
+    dRx = construct_skew_matrix(1, 0, 0) @ Rx
+    dRy = construct_skew_matrix(0, 1, 0) @ Ry
     dRda = Ry @ dRx
     dRdb = dRy @ Rx
 
@@ -228,7 +191,7 @@ def main_analytic():
     _ = plt.plot(angles, f, 'g', label='Volume')
     _ = plt.plot(angles, da, 'b.', label='dV/da')
     _ = plt.plot(angles, db, 'k.', label='dV/db')
-    _ = plt.plot(angles[:-1], finite_differences(f, angles), 'r.', label='Finite differences')
+    _ = plt.plot(angles[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [rad]')
     plt.ylim([-0.3, 0.3])
     plt.title('Single triangle facet - rotation about y-axis')
@@ -251,7 +214,7 @@ def main_analytic():
         row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
         x0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
 
-        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f)  #, 'out/supportvolume/3D_triangle_contour.svg')
+        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f)   #, 'out/supportvolume/3D_triangle_contour.svg')
     else:
         x0 = [np.deg2rad([5, 5])]
 

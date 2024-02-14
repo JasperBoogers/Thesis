@@ -87,3 +87,24 @@ def make_contour_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray, save=None):
     if save is not None:
         plt.savefig(save, format='svg', bbox_inches='tight')
     plt.show()
+
+
+def calc_min_projection_distance(m: pv.PolyData | pv.DataSet) -> float:
+    bounds = m.bounds
+    x = bounds[1] - bounds[0]
+    y = bounds[3] - bounds[2]
+    z = bounds[5] - bounds[4]
+    return np.linalg.norm([x, y, z])/2
+
+
+def finite_forward_differences(y, x):
+    h = (x[-1] - x[0])/len(x)
+    return np.diff(y)/h
+
+
+def construct_skew_matrix(x: float | int, y: float | int, z: float | int) -> np.ndarray:
+    return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
+
+
+def cross_product(v1: np.ndarray | list, v2: np.ndarray | list) -> np.ndarray:
+    return np.cross(v1, v2)
