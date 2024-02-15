@@ -37,14 +37,18 @@ def extract_time(filename: str) -> float:
             line = line.strip('\n').split('=')[1]
 
             # split on space char, strip the first space and extract time
-            if 'h' in line:
+            if 'd' in line:
+                day, hour, minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
+                tm = 3600 * (24 * day + hour) + 60 * minute + sec
+            elif 'h' in line:
                 hour, minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
                 tm = 3600 * hour + 60 * minute + sec
             else:
                 minute, sec = [int(l[:-1]) for l in line.split(' ')[1:]]
                 tm = 60 * minute + sec
         return tm
-    except FileNotFoundError: pass
+    except FileNotFoundError:
+        pass
 
 
 if __name__ == '__main__':

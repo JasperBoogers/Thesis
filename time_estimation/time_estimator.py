@@ -6,22 +6,26 @@ plt.rcParams.update(latex_params['params'])
 
 # parameters
 TRAIN_RATIO = 1
-SAVE = True
+SAVE = False
 FILE = 'time_estimation.xlsx'
 df = pd.read_excel(FILE)
 
-# add polynomial data
+# convert units from mm to m to prevent rank deficiency later
+df['Volume [mm3]'] /= 1000
+df['Area [mm2]'] /= 1000
+df['Height [mm]'] /= 1000
+
+# add extra polynomial terms
 df['Volume**2'] = df['Volume [mm3]']**2
-# df['Volume**3'] = df['Volume [mm3]']**3  # too large -> rank deficiency
+df['Volume**3'] = df['Volume [mm3]']**3
 df['Area**2'] = df['Area [mm2]']**2
+df['Area**3'] = df['Area [mm2]']**3
 df['Height**2'] = df['Height [mm]']**2
 df['Height**3'] = df['Height [mm]']**3
 
 # distribute training and validation data according to train/validation ratio
 training_data = df
 validation_data = df
-# training_data = df.sample(frac=TRAIN_RATIO, axis=0)
-# validation_data = df[~df['File name'].isin(training_data['File name'])]
 
 # select training data
 A = training_data.drop(['File name', 'Time [s]'], axis=1).to_numpy()
