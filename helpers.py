@@ -110,3 +110,53 @@ def construct_skew_matrix(x: float | int, y: float | int, z: float | int) -> np.
 
 def cross_product(v1: np.ndarray | list, v2: np.ndarray | list) -> np.ndarray:
     return np.cross(v1, v2)
+
+
+def extract_top_cover(m, x_res: float = None, y_res: float = None):
+    # compute average cell area and sampling cell length
+    A_avg = m.area / m.n_cells
+    bounds = m.bounds
+
+    L = np.sqrt(A_avg) / 4
+    if x_res is not None:
+        x_coords = np.linspace(bounds[0] + x_res / 2, bounds[1] - x_res / 2, int((bounds[1] - bounds[0]) / x_res))
+    else:
+        x_coords = np.linspace(bounds[0] + L / 2, bounds[1] - L / 2, int((bounds[1] - bounds[0]) / L))
+
+    if y_res is not None:
+        y_coords = np.linspace(bounds[2] + y_res / 2, bounds[3] - y_res / 2, int((bounds[3] - bounds[2]) / y_res))
+    else:
+        y_coords = np.linspace(bounds[2] + L / 2, bounds[3] - L / 2, int((bounds[3] - bounds[2]) / L))
+
+    z_min = 1.1 * bounds[-2]
+    z_max = 1.1 * bounds[-1]
+
+    top_idx = set()
+    lines = []
+
+    for x in x_coords:
+        for y in y_coords:
+
+            # make a line
+            line = pv.Line([x, y, z_min], [x, y, z_max])
+            lines.append(line)
+
+            # check if any cells intersect that line
+            intersect = m.find_cells_intersecting_line(line.points[0], line.points[1])
+
+            if len(intersect) > 1:
+
+                # calculate average center coordinate of each intersecting cell
+                points = np.array([m.extract_cells(i).points for i in intersect])
+                centers = np.sum(points, axis=1)
+
+                # add cell idx with highest z-coordinate to top_idx
+                max_idx = np.argmax(centers[:, -1])
+                top_idx.add(intersect[max_idx])
+            elif len(intersect) > 0:
+                # only one intersecting cell -> top cover
+                top_idx.add(intersect[0])
+            else:
+                pass
+
+    return m.extract_cells(list(top_idx)), lines
