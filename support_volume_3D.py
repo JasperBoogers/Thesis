@@ -105,6 +105,10 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
 
 
 def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane=1.0) -> tuple[float, list]:
+
+    def rotate2initial(v, mat):
+        return np.transpose(mat) @ v
+
     # extract angles, construct rotation matrices for x and y rotations
     a, b = angles[0], angles[1]
     Rx = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
@@ -122,8 +126,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
 
     # define z-height of projection plane for adaptive projection
     # z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
-    # dzda = dRda @ (np.transpose(R) @ z_min)
-    # dzdb = dRdb @ (np.transpose(R) @ z_min)
+    # dzda = dRda @ rotate2initial(z_min, R)
+    # dzdb = dRdb @ rotate2initial(z_min, R)
 
     # define z-height of projection plane for fixed projection height
     z_min = np.array([0, 0, -plane])
@@ -137,25 +141,35 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     dVda = 0.0
     dVdb = 0.0
     for idx in overhang_idx:
-        pts = msh_rot.extract_cells(idx).points
-        pts0 = msh.extract_cells(idx)
-        normal = msh.cell_normals[idx]
+
+        # extract points and normal vector from cell
+        cell = msh_rot.extract_cells(idx)
+        points = np.transpose(cell.points)
+        normal = np.transpose(cell.cell_data.active_normals)
 
         # normal has to be of unit length for area calculation
         normal /= np.linalg.norm(normal)
-        A = pts0.area * np.dot(R @ normal, -build_dir)
-        h = sum(pts[:, -1]) / 3 - z_min[-1]
+
+        # compute initial points and normal vector
+        points0 = rotate2initial(points, R)
+        normal0 = rotate2initial(normal, R)
+
+        # calculate area and height
+        A = cell.area * -build_dir.dot(normal)[0]
+        h = sum(points[-1]) / 3 - z_min[-1]
         volume += A * h
 
-        dAda = pts0.area * np.dot(dRda @ normal, -build_dir)
-        dAdb = pts0.area * np.dot(dRdb @ normal, -build_dir)
+        # calculate area derivative
+        dAda = cell.area * -build_dir.dot(dRda @ normal0)[0]
+        dAdb = cell.area * -build_dir.dot(dRdb @ normal0)[0]
 
-        dhda = sum((dRda @ np.transpose(pts0.points))[-1, :]) / 3 - dzda[-1]
-        dhdb = sum((dRdb @ np.transpose(pts0.points))[-1, :]) / 3 - dzdb[-1]
+        # calculate height derivative
+        dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
+        dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
 
+        # calculate volume derivative and sum
         dVda_ = A * dhda + h * dAda
         dVdb_ = A * dhdb + h * dAdb
-
         dVda += dVda_
         dVdb += dVdb_
 
