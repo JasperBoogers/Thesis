@@ -106,20 +106,8 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
 
 def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane=1.0) -> tuple[float, list]:
 
-    def rotate2initial(v, mat):
-        return np.transpose(mat) @ v
-
     # extract angles, construct rotation matrices for x and y rotations
-    a, b = angles[0], angles[1]
-    Rx = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
-    Ry = np.array([[np.cos(b), 0, np.sin(b)], [0, 1, 0], [-np.sin(b), 0, np.cos(b)]])
-    R = Ry @ Rx
-
-    # construct derivatives of rotation matrices
-    dRx = construct_skew_matrix(1, 0, 0) @ Rx
-    dRy = construct_skew_matrix(0, 1, 0) @ Ry
-    dRda = Ry @ dRx
-    dRdb = dRy @ Rx
+    Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
 
     # rotate mesh
     msh_rot = rotate_mesh(msh, R)
@@ -211,7 +199,7 @@ def main_analytic():
     _ = plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     # plt.ylim([-0.3, 0.3])
-    plt.title('Cube with fixed projection to y=-1 - rotation about x-axis')
+    plt.title(f'Cube with fixed projection to y=-{PLANE_OFFSET} - rotation about x-axis')
     _ = plt.legend()
     # plt.savefig('out/supportvolume/3D_cube_rotx_fixed_proj.svg', format='svg', bbox_inches='tight')
     plt.show()
