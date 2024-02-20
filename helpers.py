@@ -128,8 +128,8 @@ def extract_top_cover(m, x_res: float = None, y_res: float = None):
     else:
         y_coords = np.linspace(bounds[2] + L / 2, bounds[3] - L / 2, int((bounds[3] - bounds[2]) / L))
 
-    z_min = 1.1 * bounds[-2]
-    z_max = 1.1 * bounds[-1]
+    z_min = bounds[-2] - 5
+    z_max = bounds[-1] + 5
 
     top_idx = set()
     lines = []
@@ -160,3 +160,57 @@ def extract_top_cover(m, x_res: float = None, y_res: float = None):
                 pass
 
     return m.extract_cells(list(top_idx)), lines
+
+
+def construct_rotation_matrix(ax, ay):
+    Rx = np.array([[1, 0, 0], [0, np.cos(ax), -np.sin(ax)], [0, np.sin(ax), np.cos(ax)]])
+    Ry = np.array([[np.cos(ay), 0, np.sin(ay)], [0, 1, 0], [-np.sin(ay), 0, np.cos(ay)]])
+    R = Ry @ Rx
+
+    # construct derivatives of rotation matrices
+    dRx = construct_skew_matrix(1, 0, 0) @ Rx
+    dRy = construct_skew_matrix(0, 1, 0) @ Ry
+    dRdx = Ry @ dRx
+    dRdy = dRy @ Rx
+
+    return Rx, Ry, R, dRdx, dRdy
+
+
+def rotate2initial(v, mat):
+    return np.transpose(mat) @ v
+
+
+def calc_V_under_triangle(cell, angles, build_dir, z_min):
+
+    # extract angles, construct rotation matrices for x and y rotations
+    Rx, Ry, R, dRdx, dRdy = construct_rotation_matrix(angles[0], angles[1])
+
+    # extract points and normals
+    points = np.transpose(cell.points)
+    normal = np.transpose(cell.cell_data.active_normals)
+
+    # normal has to be of unit length for area calculation
+    normal /= np.linalg.norm(normal)
+
+    # compute initial points and normal vector
+    points0 = rotate2initial(points, R)
+    normal0 = rotate2initial(normal, R)
+
+    # calculate area and height
+    A = cell.area * build_dir.dot(normal)[0]
+    h = sum(points[-1]) / 3 - z_min[-1]
+    V = A * h
+
+    # calculate area derivative
+    dAdx = cell.area * build_dir.dot(dRdx @ normal0)[0]
+    dAdy = cell.area * build_dir.dot(dRdy @ normal0)[0]
+
+    # calculate height derivative
+    dhdx = sum((dRdx @ points0)[-1]) / 3
+    dhdy = sum((dRdy @ points0)[-1]) / 3
+
+    # calculate volume derivative and sum
+    dVdx = A * dhdx + h * dAdx
+    dVdy = A * dhdy + h * dAdy
+
+    return V, dVdx, dVdy
