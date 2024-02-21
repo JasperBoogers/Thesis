@@ -112,54 +112,59 @@ def cross_product(v1: np.ndarray | list, v2: np.ndarray | list) -> np.ndarray:
     return np.cross(v1, v2)
 
 
-def extract_top_cover(m, x_res: float = None, y_res: float = None):
-    # compute average cell area and sampling cell length
-    A_avg = m.area / m.n_cells
+def extract_top_cover(m):
+
+    # set bounds
     bounds = m.bounds
-
-    L = np.sqrt(A_avg) / 4
-    if x_res is not None:
-        x_coords = np.linspace(bounds[0] + x_res / 2, bounds[1] - x_res / 2, int((bounds[1] - bounds[0]) / x_res))
-    else:
-        x_coords = np.linspace(bounds[0] + L / 2, bounds[1] - L / 2, int((bounds[1] - bounds[0]) / L))
-
-    if y_res is not None:
-        y_coords = np.linspace(bounds[2] + y_res / 2, bounds[3] - y_res / 2, int((bounds[3] - bounds[2]) / y_res))
-    else:
-        y_coords = np.linspace(bounds[2] + L / 2, bounds[3] - L / 2, int((bounds[3] - bounds[2]) / L))
-
     z_min = bounds[-2] - 5
     z_max = bounds[-1] + 5
 
-    top_idx = set()
+    # pre-calculate cell centers
+    # compute average coordinate for each cell, and store in 'Center' array
+    m.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in m.cell]
+
+    top = set()
+    not_top = set()
     lines = []
 
-    for x in x_coords:
-        for y in y_coords:
+    for i in range(m.n_cells):
 
-            # make a line
-            line = pv.Line([x, y, z_min], [x, y, z_max])
-            lines.append(line)
+        # continue if already checked
+        if i in top:
+            continue
+        if i in not_top:
+            continue
 
-            # check if any cells intersect that line
-            intersect = m.find_cells_intersecting_line(line.points[0], line.points[1])
+        # extract cell
+        cell = m.extract_cells(i)
 
-            if len(intersect) > 1:
+        # center is average of point coordinates
+        center = cell['Center']
+        center = center[0]
 
-                # calculate average center coordinate of each intersecting cell
-                points = np.array([m.extract_cells(i).points for i in intersect])
-                centers = np.sum(points, axis=1)
+        # generate line through center and extract intersecting cells
+        line = pv.Line([center[0], center[1], z_min], [center[0], center[1], z_max])
+        lines.append(line)
 
-                # add cell idx with highest z-coordinate to top_idx
-                max_idx = np.argmax(centers[:, -1])
-                top_idx.add(intersect[max_idx])
-            elif len(intersect) > 0:
-                # only one intersecting cell -> top cover
-                top_idx.add(intersect[0])
-            else:
-                pass
+        # check if any cells intersect that line
+        intersect = m.find_cells_intersecting_line(line.points[0], line.points[1])
 
-    return m.extract_cells(list(top_idx)), lines
+        if len(intersect) > 1:
+            centers = m.extract_cells(intersect)['Center']
+            max_idx = np.argmax(centers[:, -1])
+
+            # add cell index with max z to top
+            top.add(intersect[max_idx])
+
+            # add other cells to not_top
+            not_top.update(np.delete(intersect, max_idx))
+        elif len(intersect) > 0:
+            # only one intersecting cell -> top cover
+            top.update(intersect)
+        else:
+            pass
+
+    return m.extract_cells(list(top)), lines
 
 
 def construct_rotation_matrix(ax, ay):

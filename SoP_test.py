@@ -48,16 +48,20 @@ def plot_grid_sampling(mesh):
         _ = p.add_mesh(line, color='b')
     p.show()
 
+
 if __name__ == '__main__':
 
     # load file and rotate
     OVERHANG_THRESHOLD = 1e-5
-    FILE = 'Geometries/chair.stl'
-    m = pv.read(FILE)
-    m = prep_mesh(m)
+    FILE = 'Geometries/cube.stl'
+
+    # m = pv.read(FILE)
+    m = pv.Cube()
+    m = prep_mesh(m, decimation=0)
+    m = m.subdivide(2, subfilter='linear')
 
     # showcase of grid sampling
-    # plot_grid_sampling(m.rotate_x(45, inplace=False))
+    # plot_grid_sampling(m)
 
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(m)
@@ -73,9 +77,9 @@ if __name__ == '__main__':
         db.append(-db_)
 
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b', label=r'dV/d$\theta_x$')
+    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'dV/d$\theta_x$')
     _ = plt.plot(np.rad2deg(ang), db, 'k', label=r'dV/d$\theta_y$')
-    _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r', label='Finite differences')
+    _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     # plt.ylim([-0.3, 0.3])
     plt.title(f'Chair with fixed projection to y=-{PLANE_OFFSET} - rotation about x-axis')
