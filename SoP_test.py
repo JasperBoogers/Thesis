@@ -1,3 +1,4 @@
+import time
 import pyvista as pv
 import numpy as np
 from helpers import *
@@ -14,7 +15,7 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -
     # define z-height of projection plane for fixed projection height
     z_min = np.array([0, 0, -plane])
 
-    # extract overhanging faces
+    # extract upward facing facets
     upward_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] > thresh]
     top_cover, lines = extract_top_cover(msh_rot.extract_cells(upward_idx))
 
@@ -34,29 +35,95 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -
     return -(volume - msh.volume), [-dVda, -dVdb]
 
 
-def plot_grid_sampling(mesh):
+def plot_top_cover(mesh, angle=0):
     # extract upward facing triangles
     idx = np.arange(mesh.n_cells)[mesh['Normals'][:, 2] > 1e-6]
     upward = mesh.extract_cells(idx)
     top_cover, lines = extract_top_cover(upward)
 
-    # plot
+    plot_intermediate(mesh, upward, top_cover, lines, angle)
+
+
+def plot_correction_facets(mesh, angle=0):
+
+    # compute average coordinate for each cell, and store in 'Center' array
+    mesh.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh.cell]
+
+    # extract overhang
+    overhang_idx = np.arange(mesh.n_cells)[mesh['Normals'][:, 2] < -1e-6]
+    overhang = mesh.extract_cells(overhang_idx)
+
+    # extract correction
+    correction_idx, lines = extract_correction_idx(mesh, overhang_idx)
+
+    if len(correction_idx) > 0:
+        correction_facets = mesh.extract_cells(correction_idx)
+    else:
+        correction_facets = None
+    plot_intermediate(mesh, overhang, correction_facets, lines, angle)
+
+
+def plot_intermediate(mesh, selection, correction, lines, angle):
+
     p = pv.Plotter()
-    _ = p.add_mesh(upward, show_edges=True, color='g', opacity=0.5)
-    _ = p.add_mesh(top_cover, show_edges=True, color='r', opacity=0.5)
+    _ = p.add_mesh(mesh, style='wireframe', color='k', show_edges=True)
+    _ = p.add_mesh(selection, show_edges=True, color='b', opacity=1)
+    if correction is not None:
+        _ = p.add_mesh(correction, show_edges=True, color='r', opacity=1)
     for line in lines:
-        _ = p.add_mesh(line, color='b')
+        _ = p.add_mesh(line, color='y')
+    _ = p.add_text(f'rotation of {angle} degrees')
     p.show()
 
+
+def SoP_naive_correction(angles: list, msh: pv.PolyData, thresh: float, plane: float) -> tuple[float, list]:
+
+    # extract angles, construct rotation matrices for x and y rotations
+    Rx, Ry, R, dRdx, dRdy = construct_rotation_matrix(angles[0], angles[1])
+
+    # rotate mesh
+    msh_rot = rotate_mesh(msh, R)
+
+    # compute average coordinate for each cell, and store in 'Center' array
+    msh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in m.cell]
+
+    # extract overhanging faces
+    overhang_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] < -thresh]
+    correction_idx, lines = extract_correction_idx(msh_rot, overhang_idx)
+
+    # define z-height of projection plane for fixed projection height
+    z_min = np.array([0, 0, -plane])
+
+    build_dir = np.array([0, 0, 1])
+    volume = 0.0
+    dVda = 0.0
+    dVdb = 0.0
+
+    for idx in overhang_idx:
+        # extract points and normal vector from cell
+        cell = msh_rot.extract_cells(idx)
+        vol, dVda_, dVdb_ = calc_V_under_triangle(cell, angles, -build_dir, z_min)
+        volume += vol
+        dVda += dVda_
+        dVdb += dVdb_
+
+    for idx in list(correction_idx):
+        cell = msh_rot.extract_cells(idx)
+        vol, dVda_, dVdb_ = calc_V_under_triangle(cell, angles, build_dir, z_min)
+        volume -= vol
+        dVda -= dVda_
+        dVdb -= dVdb_
+
+    return -volume, [-dVda, -dVdb]
 
 if __name__ == '__main__':
 
     # load file and rotate
     OVERHANG_THRESHOLD = 1e-5
-    FILE = 'Geometries/cube.stl'
+    FILE = 'Geometries/cube_cutout.stl'
 
-    # m = pv.read(FILE)
-    m = pv.Cube()
+    m = pv.read(FILE)
+    # m = pv.Cube()
     m = prep_mesh(m, decimation=0)
     m = m.subdivide(2, subfilter='linear')
 
@@ -65,26 +132,33 @@ if __name__ == '__main__':
 
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(m)
-
-    ang = np.linspace(np.deg2rad(-180), np.deg2rad(180), 101)
+    ang = np.linspace(np.deg2rad(-180), np.deg2rad(180), 10)
     f = []
     da = []
     db = []
+
     for a in ang:
-        f_, [da_, db_] = SoP_top_cover([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        a= np.rad2deg(a)
+        plot_correction_facets(m.rotate_x(a), a)
+
+    start = time.time()
+    for a in ang:
+        f_, [da_, db_] = SoP_naive_correction([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
         f.append(-f_)
         da.append(-da_)
         db.append(-db_)
 
+    end = time.time()
+
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'dV/d$\theta_x$')
-    _ = plt.plot(np.rad2deg(ang), db, 'k', label=r'dV/d$\theta_y$')
+    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'dV/d$\alpha$')
+    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'dV/d$\beta$')
     _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
-    # plt.ylim([-0.3, 0.3])
-    plt.title(f'Chair with fixed projection to y=-{PLANE_OFFSET} - rotation about x-axis')
+    plt.ylim([-2, 2])
+    plt.title(f'Cube with cutout - rotation about x-axis, correct method')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/3D_cube_rotx_fixed_proj.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/SoP_cube_rotx_Ezair.svg', format='svg', bbox_inches='tight')
     plt.show()
 
-    print('')
+    print(f'Finished in {end-start} seconds')

@@ -219,3 +219,42 @@ def calc_V_under_triangle(cell, angles, build_dir, z_min):
     dVdy = A * dhdy + h * dAdy
 
     return V, dVdx, dVdy
+
+
+def extract_correction_idx(mesh, overhang_idx):
+    # set bounds
+    bounds = mesh.bounds
+    z_min = bounds[-2] - 5
+    z_max = bounds[-1] + 5
+
+    correction_idx = set()
+    lines = []
+
+    for i in overhang_idx:
+
+        # extract cell
+        cell = mesh.extract_cells(i)
+
+        # center is average of point coordinates
+        center = cell['Center']
+        center = center[0]
+
+        # generate line below center and extract intersecting cells
+        line = pv.Line([center[0], center[1], z_min], center)
+        lines.append(line)
+
+        # check if any cells intersect that line
+        intersect = mesh.find_cells_intersecting_line(line.points[0], line.points[1])
+
+        # do not consider last index, as that is the overhanging cell
+        if i in intersect:
+            intersect = intersect[:-1]
+
+        if len(intersect) > 0:
+            centers = np.array([mesh.extract_cells(c)['Center'][0] for c in intersect])
+            max_idx = np.argmax(centers[:, -1])
+
+            # add cell index with max z to correction
+            correction_idx.add(intersect[max_idx])
+
+    return list(correction_idx), lines
