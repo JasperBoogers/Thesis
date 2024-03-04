@@ -16,8 +16,8 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -
     z_min = np.array([0, 0, -plane])
 
     # extract upward facing facets
-    upward_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] > thresh]
-    top_cover, lines = extract_top_cover(msh_rot.extract_cells(upward_idx))
+    upward_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] > thresh]
+    top_cover, _ = extract_top_cover(msh_rot.extract_cells(upward_idx))
 
     build_dir = np.array([0, 0, 1])
     volume = 0.0
@@ -32,7 +32,7 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -
         dVda += dVda_
         dVdb += dVdb_
 
-    return -(volume - msh.volume), [-dVda, -dVdb]
+    return -(volume - msh_rot.volume), [-dVda, -dVdb]
 
 
 def plot_top_cover(mesh, angle=0):
@@ -107,7 +107,7 @@ def SoP_naive_correction(angles: list, msh: pv.PolyData, thresh: float, plane: f
         dVda += dVda_
         dVdb += dVdb_
 
-    for idx in list(correction_idx):
+    for idx in correction_idx:
         cell = msh_rot.extract_cells(idx)
         vol, dVda_, dVdb_ = calc_V_under_triangle(cell, angles, build_dir, z_min)
         volume -= vol
@@ -115,6 +115,7 @@ def SoP_naive_correction(angles: list, msh: pv.PolyData, thresh: float, plane: f
         dVdb -= dVdb_
 
     return -volume, [-dVda, -dVdb]
+
 
 if __name__ == '__main__':
 
@@ -127,19 +128,12 @@ if __name__ == '__main__':
     m = prep_mesh(m, decimation=0)
     m = m.subdivide(2, subfilter='linear')
 
-    # showcase of grid sampling
-    # plot_grid_sampling(m)
-
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(m)
-    ang = np.linspace(np.deg2rad(-180), np.deg2rad(180), 10)
+    ang = np.linspace(np.deg2rad(-180), np.deg2rad(180), 201)
     f = []
     da = []
     db = []
-
-    for a in ang:
-        a= np.rad2deg(a)
-        plot_correction_facets(m.rotate_x(a), a)
 
     start = time.time()
     for a in ang:
@@ -148,17 +142,21 @@ if __name__ == '__main__':
         da.append(-da_)
         db.append(-db_)
 
-    end = time.time()
+    # ax, ay, f = grid_search(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 20)
 
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'dV/d$\alpha$')
-    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'dV/d$\beta$')
+    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
     _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     plt.ylim([-2, 2])
-    plt.title(f'Cube with cutout - rotation about x-axis, correct method')
+    plt.title(f'Cube with cutout - rotation about x-axis, correction method')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP_cube_rotx_Ezair.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/SoP_cube_rotx_correction.svg', format='svg', bbox_inches='tight')
     plt.show()
 
+    end = time.time()
     print(f'Finished in {end-start} seconds')
+    # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, 'Reference - unit cube')
+
+    print()
