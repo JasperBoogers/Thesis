@@ -2,21 +2,25 @@ import pyvista as pv
 import numpy as np
 from scipy.spatial.transform import Rotation
 from matplotlib import pyplot as plt
+from os import cpu_count
+from joblib import delayed, Parallel
 
 
-def prep_mesh(m: pv.PolyData | pv.DataSet, decimation=0.9, flip=False) -> pv.PolyData:
+def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, translate=True) -> pv.PolyData:
     # ensure mesh is only triangles
-    m.triangulate(inplace=True)
+    mesh.triangulate(inplace=True)
 
     # decimate mesh by decimate*100%
-    m.decimate_pro(decimation)
+    mesh.decimate_pro(decimation)
 
     # (re)compute normals, and flip normal direction if needed
-    m.compute_normals(inplace=True, flip_normals=flip)
+    mesh.compute_normals(inplace=True, flip_normals=flip)
 
     # move mesh center of mass to origin
-    m.translate(-m.center_of_mass(), inplace=True)
-    return m
+    if translate:
+        mesh = mesh.translate(-mesh.center_of_mass(), inplace=False)
+
+    return mesh
 
 
 def rotate_mesh(m: pv.PolyData | pv.DataSet, rot: np.ndarray | Rotation) -> pv.DataSet:
@@ -151,10 +155,10 @@ def extract_top_cover(m):
 
         if len(intersect) > 1:
             centers = m.extract_cells(intersect)['Center']
-            max_idx = np.argmax(centers[:, -1])
+            max_idx = np.argwhere(centers[:, -1] == np.max(centers[:, -1])).flatten().tolist()
 
             # add cell index with max z to top
-            top.add(intersect[max_idx])
+            top.update(intersect[max_idx])
 
             # add other cells to not_top
             not_top.update(np.delete(intersect, max_idx))
@@ -252,9 +256,32 @@ def extract_correction_idx(mesh, overhang_idx):
 
         if len(intersect) > 0:
             centers = np.array([mesh.extract_cells(c)['Center'][0] for c in intersect])
-            max_idx = np.argmax(centers[:, -1])
+            max_idx = np.argwhere(centers[:, -1] == np.max(centers[:, -1])).flatten().tolist()
 
             # add cell index with max z to correction
-            correction_idx.add(intersect[max_idx])
+            correction_idx.update(intersect[max_idx])
 
     return list(correction_idx), lines
+
+
+def grid_search(fun, mesh, overhang, offset, max_angle, angle_step):
+
+    # grid search parameters
+    ax = ay = np.linspace(-max_angle, max_angle, angle_step)
+    # f = np.zeros((ax.shape[0], ay.shape[0]))
+    #
+    # for i, x in enumerate(ax):
+    #     for j, y in enumerate(ay):
+    #         f[j, i] = fun([x, y], mesh, overhang, offset)[0]
+
+    f = Parallel(n_jobs=cpu_count())(delayed(fun)([x, y], mesh, overhang, offset) for x in ax for y in ay)
+    f, _, = zip(*f)
+    f = np.reshape(f, (len(ax), len(ay)))
+    f = np.transpose(f)
+    return ax, ay, f
+
+
+def extract_x0(ax, ay, f, n):
+    flat_idx = np.argpartition(f.ravel(), -n)[-n:]
+    row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
+    return [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(n)]

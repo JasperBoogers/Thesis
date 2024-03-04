@@ -194,30 +194,20 @@ def main_analytic():
         db.append(-db_)
 
     _ = plt.plot(np.rad2deg(angles), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(angles), da, 'b.', label=r'dV/d$\theta_x$')
-    _ = plt.plot(np.rad2deg(angles), db, 'k.', label=r'dV/d$\theta_y$')
+    _ = plt.plot(np.rad2deg(angles), da, 'b.', label=r'$V_{,\alpha}$')
+    _ = plt.plot(np.rad2deg(angles), db, 'k.', label=r'$V_{,\beta}$')
     _ = plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     # plt.ylim([-0.3, 0.3])
-    plt.title(f'Cube with fixed projection to y=-{PLANE_OFFSET} - rotation about x-axis')
+    plt.title(f'Cube with fixed projection to y=-1 - rotation about x-axis')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/3D_cube_rotx_fixed_proj.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/3D_cube_rotx_fixed_proj.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
     if GRID:
-        print(f'Perform grid search and extract {NUM_START} max values')
-
-        # grid search parameters
-        ax = ay = np.linspace(-MAX_ANGLE, MAX_ANGLE, 40)
-        f = np.zeros((ax.shape[0], ay.shape[0]))
-
-        for i, x in enumerate(ax):
-            for j, y in enumerate(ay):
-                f[j, i] = support_volume_analytic([x, y], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)[0]
-        flat_idx = np.argpartition(f.ravel(), -NUM_START)[-NUM_START:]
-        row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
-        x0 = [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(NUM_START)]
+        ax, ay, f = grid_search(support_volume_analytic, mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        x0 = extract_x0(ax, ay, f, NUM_START)
 
         make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f, 'Unit cube contour plot', 'out/supportvolume/3D_cube_contour.svg')
     else:

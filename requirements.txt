@@ -13,3 +13,4 @@ imageio
 tqdm
 
 jax
+joblib
