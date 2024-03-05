@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def finite_forward_differences(y, x):
+def finite_forward_differences(y, x) -> np.ndarray:
     h = (x[-1] - x[0])/len(x)
     return np.diff(y)/h
 
@@ -14,11 +14,11 @@ def cross_product(v1: np.ndarray | list, v2: np.ndarray | list) -> np.ndarray:
     return np.cross(v1, v2)
 
 
-def rotate2initial(v, mat):
+def rotate2initial(v, mat) -> np.ndarray:
     return np.transpose(mat) @ v
 
 
-def construct_rotation_matrix(a, b) -> tuple:
+def construct_rotation_matrix(a, b) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     Rx = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
     Ry = np.array([[np.cos(b), 0, np.sin(b)], [0, 1, 0], [-np.sin(b), 0, np.cos(b)]])
     R = Ry @ Rx
@@ -32,6 +32,6 @@ def construct_rotation_matrix(a, b) -> tuple:
     return Rx, Ry, R, dRdx, dRdy
 
 
-def smooth_heaviside(x: float, k: float):
+def smooth_heaviside(x: float, k: float) -> float:
     H = 1/(1 + np.exp(-2 * k * x))
     return H
