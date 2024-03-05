@@ -4,6 +4,7 @@ from scipy.spatial.transform import Rotation
 from matplotlib import pyplot as plt
 from os import cpu_count
 from joblib import delayed, Parallel
+from math_helpers import *
 
 
 def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, translate=True) -> pv.PolyData:
@@ -103,19 +104,6 @@ def calc_min_projection_distance(m: pv.PolyData | pv.DataSet) -> float:
     return np.linalg.norm([x, y, z])/2
 
 
-def finite_forward_differences(y, x):
-    h = (x[-1] - x[0])/len(x)
-    return np.diff(y)/h
-
-
-def construct_skew_matrix(x: float | int, y: float | int, z: float | int) -> np.ndarray:
-    return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
-
-
-def cross_product(v1: np.ndarray | list, v2: np.ndarray | list) -> np.ndarray:
-    return np.cross(v1, v2)
-
-
 def extract_top_cover(m):
 
     # set bounds
@@ -169,24 +157,6 @@ def extract_top_cover(m):
             pass
 
     return m.extract_cells(list(top)), lines
-
-
-def construct_rotation_matrix(ax, ay):
-    Rx = np.array([[1, 0, 0], [0, np.cos(ax), -np.sin(ax)], [0, np.sin(ax), np.cos(ax)]])
-    Ry = np.array([[np.cos(ay), 0, np.sin(ay)], [0, 1, 0], [-np.sin(ay), 0, np.cos(ay)]])
-    R = Ry @ Rx
-
-    # construct derivatives of rotation matrices
-    dRx = construct_skew_matrix(1, 0, 0) @ Rx
-    dRy = construct_skew_matrix(0, 1, 0) @ Ry
-    dRdx = Ry @ dRx
-    dRdy = dRy @ Rx
-
-    return Rx, Ry, R, dRdx, dRdy
-
-
-def rotate2initial(v, mat):
-    return np.transpose(mat) @ v
 
 
 def calc_V_under_triangle(cell, angles, build_dir, z_min):
@@ -301,8 +271,3 @@ def extract_x0(ax, ay, f, n):
     flat_idx = np.argpartition(f.ravel(), -n)[-n:]
     row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
     return [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(n)]
-
-
-def smooth_heaviside(x: float, k: float):
-    H = 1/(1 + np.exp(-2 * k * x))
-    return H
