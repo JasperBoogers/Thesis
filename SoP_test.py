@@ -136,11 +136,13 @@ if __name__ == '__main__':
     db = []
 
     start = time.time()
-    for a in ang:
-        f_, [da_, db_] = SoP_naive_correction([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
-        f.append(-f_)
-        da.append(-da_)
-        db.append(-db_)
+    # for a in ang:
+    #     f_, [da_, db_] = SoP_naive_correction([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
+    #     f.append(-f_)
+    #     da.append(-da_)
+    #     db.append(-db_)
+
+    ang, f, da, db = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.pi, 101, 'x')
 
     # ax, ay, f = grid_search(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 20)
 
@@ -152,7 +154,7 @@ if __name__ == '__main__':
     plt.ylim([-2, 2])
     plt.title(f'Cube with cutout - rotation about x-axis, correction method')
     _ = plt.legend()
-    plt.savefig('out/supportvolume/SoP_cube_rotx_correction.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/SoP_cube_rotx_correction.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     end = time.time()

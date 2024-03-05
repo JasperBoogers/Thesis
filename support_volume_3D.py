@@ -164,6 +164,67 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     return -volume, [-dVda, -dVdb]
 
 
+def support_volume_smooth(angles: list, msh: pv.PolyData, thresh: float, plane=1.0) -> tuple[float, list]:
+
+    # extract angles, construct rotation matrices for x and y rotations
+    Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
+
+    # rotate mesh
+    msh_rot = rotate_mesh(msh, R)
+
+    # define z-height of projection plane for fixed projection height
+    z_min = np.array([0, 0, -plane])
+    dzda = dzdb = [0]
+
+    build_dir = np.array([0, 0, 1])
+    volume = 0.0
+    dVda = 0.0
+    dVdb = 0.0
+    for idx in range(msh_rot.n_cells):
+
+        # extract points and normal vector from cell
+        cell = msh_rot.extract_cells(idx)
+        points = np.transpose(cell.points)
+        normal = np.transpose(cell.cell_data.active_normals[0])
+
+        # normal has to be of unit length for area calculation
+        normal /= np.linalg.norm(normal)
+
+        # compute initial points and normal vector
+        points0 = rotate2initial(points, R)
+        normal0 = rotate2initial(normal, R)
+
+        # calculate derivative of normal
+        dnda = dRda @ normal0
+        dndb = dRdb @ normal0
+
+        # calculate the smooth Heaviside of the normal and its derivative
+        k = 10
+        H = smooth_heaviside(-1 * normal[-1], k)
+        dHda = H * (1 - H) * -2 * k * dnda[-1]
+        dHdb = H * (1 - H) * -2 * k * dndb[-1]
+
+        # calculate area and height
+        A = cell.area * -build_dir.dot(normal)
+        h = sum(points[-1]) / 3 - z_min[-1]
+        volume += H * A * h
+
+        # calculate area derivative
+        dAda = cell.area * -build_dir.dot(dnda)
+        dAdb = cell.area * -build_dir.dot(dndb)
+
+        # calculate height derivative
+        dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
+        dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
+
+        # calculate volume derivative and sum
+        dVda_ = H * A * dhda + H * h * dAda + dHda * A * h
+        dVdb_ = H * A * dhdb + H * h * dAdb + dHdb * A * h
+        dVda += dVda_
+        dVdb += dVdb_
+
+    return -volume, [-dVda, -dVdb]
+
 def main_analytic():
     # set parameters
     OVERHANG_THRESHOLD = -1e-5
@@ -188,7 +249,7 @@ def main_analytic():
     da = []
     db = []
     for a in angles:
-        f_, [da_, db_] = support_volume_analytic([a, 0], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        f_, [da_, db_] = support_volume_smooth([0, a], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
         f.append(-f_)
         da.append(-da_)
         db.append(-db_)
@@ -199,35 +260,35 @@ def main_analytic():
     _ = plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     # plt.ylim([-0.3, 0.3])
-    plt.title(f'Cube with fixed projection to y=-1 - rotation about x-axis')
+    plt.title(f'Cube with smooth Heaviside approximation, k=10 - rotation about y-axis')
     _ = plt.legend()
-    plt.savefig('out/supportvolume/3D_cube_rotx_fixed_proj.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/3D_cube_rotx_smooth.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
-    if GRID:
-        ax, ay, f = grid_search(support_volume_analytic, mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
-        x0 = extract_x0(ax, ay, f, NUM_START)
-
-        make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f, 'Unit cube contour plot', 'out/supportvolume/3D_cube_contour.svg')
-    else:
-        x0 = [np.deg2rad([5, 5])]
-
-    res = []
-    for i in range(NUM_START):
-        start = time()
-
-        # set initial condition
-        a = np.array(x0[i])
-        print(f'Iteration {i + 1} with x0: {np.rad2deg(a)} degrees')
-
-        y = minimize(support_volume_analytic, a, jac=True,
-                     args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
-        end = time() - start
-        print(y)
-        print(f'Optimal orientation at {np.rad2deg(y.x)} degrees')
-        print(f'Computation time: {end} s')
-        res.append(y)
+    # if GRID:
+    #     ax, ay, f = grid_search(support_volume_analytic, mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+    #     x0 = extract_x0(ax, ay, f, NUM_START)
+    #
+    #     make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f, 'Unit cube contour plot', 'out/supportvolume/3D_cube_contour.svg')
+    # else:
+    #     x0 = [np.deg2rad([5, 5])]
+    #
+    # res = []
+    # for i in range(NUM_START):
+    #     start = time()
+    #
+    #     # set initial condition
+    #     a = np.array(x0[i])
+    #     print(f'Iteration {i + 1} with x0: {np.rad2deg(a)} degrees')
+    #
+    #     y = minimize(support_volume_analytic, a, jac=True,
+    #                  args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
+    #     end = time() - start
+    #     print(y)
+    #     print(f'Optimal orientation at {np.rad2deg(y.x)} degrees')
+    #     print(f'Computation time: {end} s')
+    #     res.append(y)
 
     print('Finished')
 

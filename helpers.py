@@ -281,7 +281,28 @@ def grid_search(fun, mesh, overhang, offset, max_angle, angle_step):
     return ax, ay, f
 
 
+def grid_search_1D(fun, mesh, overhang, offset, max_angle, angle_step, dim='x'):
+    a = np.linspace(-max_angle, max_angle, angle_step)
+
+    if dim == 'x':
+        f = Parallel(n_jobs=cpu_count())(delayed(fun)([ai, 0], mesh, overhang, offset) for ai in a)
+    elif dim == 'y':
+        f = Parallel(n_jobs=cpu_count())(delayed(fun)([0, ai], mesh, overhang, offset) for ai in a)
+    else:
+        print('Invalid')
+        return
+
+    f, d = zip(*f)
+    da, db = zip(*d)
+    return np.array(a), np.array(f), np.array(da), np.array(db)
+
+
 def extract_x0(ax, ay, f, n):
     flat_idx = np.argpartition(f.ravel(), -n)[-n:]
     row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
     return [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(n)]
+
+
+def smooth_heaviside(x: float, k: float):
+    H = 1/(1 + np.exp(-2 * k * x))
+    return H
