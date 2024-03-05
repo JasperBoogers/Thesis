@@ -164,7 +164,7 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     return -volume, [-dVda, -dVdb]
 
 
-def support_volume_smooth(angles: list, msh: pv.PolyData, thresh: float, plane=1.0) -> tuple[float, list]:
+def support_volume_smooth(angles: list, msh: pv.PolyData, plane=1.0) -> tuple[float, list]:
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
