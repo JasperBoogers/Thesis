@@ -200,7 +200,7 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, thresh, plane=1.0) -> 
 
         # calculate the smooth Heaviside of the normal and its derivative
         k = 10
-        H = smooth_heaviside(-1 * normal[-1], k)
+        H = smooth_heaviside(-1 * normal[-1], k, -thresh)
         dHda = H * (1 - H) * -2 * k * dnda[-1]
         dHdb = H * (1 - H) * -2 * k * dndb[-1]
 
@@ -228,11 +228,11 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, thresh, plane=1.0) -> 
 
 def main_analytic():
     # set parameters
-    OVERHANG_THRESHOLD = -1e-5
+    OVERHANG_THRESHOLD = -np.sin(60)
     NUM_START = 1
     GRID = False
     MAX_ANGLE = np.deg2rad(180)
-    FILE = 'Geometries/cube.stl'
+    # FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
     # mesh = pv.read(FILE)
@@ -244,26 +244,31 @@ def main_analytic():
 
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(mesh)
+    #
+    # angles = np.linspace(np.deg2rad(-MAX_ANGLE), np.deg2rad(-MAX_ANGLE), 101)
+    # f = []
+    # da = []
+    # db = []
+    # for a in angles:
+    #     f_, [da_, db_] = support_volume_smooth([a, 0], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+    #     f.append(-f_)
+    #     da.append(-da_)
+    #     db.append(-db_)
 
-    angles = np.linspace(np.deg2rad(-180), np.deg2rad(180), 201)
-    f = []
-    da = []
-    db = []
-    for a in angles:
-        f_, [da_, db_] = support_volume_smooth([0, a], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
-        f.append(-f_)
-        da.append(-da_)
-        db.append(-db_)
+    angles, f, da, db = grid_search_1D(support_volume_smooth, mesh, OVERHANG_THRESHOLD, PLANE_OFFSET, MAX_ANGLE, 201)
+    f = -f
+    da = -da
+    db = -db
 
     _ = plt.plot(np.rad2deg(angles), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(angles), da, 'b.', label=r'$V_{,\alpha}$')
-    _ = plt.plot(np.rad2deg(angles), db, 'k.', label=r'$V_{,\beta}$')
+    _ = plt.plot(np.rad2deg(angles), da, 'b', label=r'$V_{,\alpha}$')
+    _ = plt.plot(np.rad2deg(angles), db, 'k', label=r'$V_{,\beta}$')
     _ = plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     # plt.ylim([-0.3, 0.3])
-    plt.title(f'Cube with smooth Heaviside approximation, k=10 - rotation about y-axis')
+    plt.title(f'3D cube with 60 deg overhang threshold - rotation about x-axis')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/3D_cube_rotx_smooth.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/3D_cube_rotx_60deg_smooth.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
