@@ -101,11 +101,10 @@ def calc_min_projection_distance(m: pv.PolyData | pv.DataSet) -> float:
     x = bounds[1] - bounds[0]
     y = bounds[3] - bounds[2]
     z = bounds[5] - bounds[4]
-    return np.linalg.norm([x, y, z])/2
+    return np.linalg.norm([x, y, z]) / 2
 
 
 def extract_top_cover(m):
-
     # set bounds
     bounds = m.bounds
     z_min = bounds[-2] - 5
@@ -160,7 +159,6 @@ def extract_top_cover(m):
 
 
 def calc_V_under_triangle(cell, angles, build_dir, z_min):
-
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRdx, dRdy = construct_rotation_matrix(angles[0], angles[1])
 
@@ -235,7 +233,6 @@ def extract_correction_idx(mesh, overhang_idx):
 
 
 def grid_search(fun, mesh, overhang, offset, max_angle, angle_step):
-
     # grid search parameters
     ax = ay = np.linspace(-max_angle, max_angle, angle_step)
     # f = np.zeros((ax.shape[0], ay.shape[0]))
@@ -271,3 +268,29 @@ def extract_x0(ax, ay, f, n):
     flat_idx = np.argpartition(f.ravel(), -n)[-n:]
     row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
     return [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(n)]
+
+
+def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray,
+                            build_dir: list | np.ndarray, z_min: list | np.ndarray):
+    # compute sensitivities for all cells
+    res = Parallel(n_jobs=cpu_count())(
+        delayed(calc_V_under_triangle)(mesh.extract_cells(i), angles, build_dir, z_min) for i in range(mesh.n_cells))
+
+    f, dx, dy = zip(*res)
+    mesh.cell_data['dVda'] = np.array(dx)
+    mesh.cell_data['dVdb'] = np.array(dy)
+    mesh.cell_data['dV'] = (np.array(dx) + np.array(dy)) / 2  # TODO: define nice metric for combined derivative
+    return mesh
+
+
+def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> None:
+    p = pv.Plotter()
+    if axis == 'x':
+        _ = p.add_mesh(mesh, scalars='dVda', show_edges=True)
+    elif axis == 'y':
+        _ = p.add_mesh(mesh, scalars='dVdb', show_edges=True)
+    else:
+        _ = p.add_mesh(mesh, scalars='dV', show_edges=True)
+
+    p.add_axes()
+    p.show()

@@ -130,10 +130,10 @@ if __name__ == '__main__':
 
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(m)
-    ang = np.linspace(np.deg2rad(-180), np.deg2rad(180), 201)
-    f = []
-    da = []
-    db = []
+    # ang = np.linspace(np.deg2rad(-180), np.deg2rad(180), 201)
+    # f = []
+    # da = []
+    # db = []
 
     start = time.time()
     # for a in ang:
@@ -143,16 +143,18 @@ if __name__ == '__main__':
     #     db.append(-db_)
 
     ang, f, da, db = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.pi, 101, 'x')
-
+    f = -f
+    da = -da
+    db = -db
     # ax, ay, f = grid_search(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 20)
 
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    _ = plt.plot(np.rad2deg(ang), -f, 'g', label='Volume')
     _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
     _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
     _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     plt.ylim([-2, 2])
-    plt.title(f'Cube with cutout - rotation about x-axis, correction method')
+    plt.title(f'Cube with cutout - rotation about x-axis, Ezair method')
     _ = plt.legend()
     # plt.savefig('out/supportvolume/SoP_cube_rotx_correction.svg', format='svg', bbox_inches='tight')
     plt.show()

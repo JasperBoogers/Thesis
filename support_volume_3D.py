@@ -300,4 +300,15 @@ def main_analytic():
 
 
 if __name__ == "__main__":
-    main_analytic()
+    # main_analytic()
+    cube = pv.read('Geometries/3DBenchy/3DBenchy-bridge.stl')
+    # cube = pv.Cube()
+    cube = prep_mesh(cube, decimation=0)
+    # cube = cube.subdivide(2, 'linear')
+
+    z_min = np.array([0, 0, -calc_min_projection_distance(cube)])
+    b = np.array([0, 0, 1])
+    a = [np.deg2rad(45), 0]
+    cube = calc_cell_sensitivities(cube, a, b, z_min)
+
+    plot_cell_sensitivities(cube.rotate_x(45), 'x')
