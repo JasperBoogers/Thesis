@@ -104,21 +104,17 @@ def calc_min_projection_distance(m: pv.PolyData | pv.DataSet) -> float:
     return np.linalg.norm([x, y, z]) / 2
 
 
-def extract_top_cover(m):
+def extract_top_cover(m, upward):
     # set bounds
     bounds = m.bounds
     z_min = bounds[-2] - 5
     z_max = bounds[-1] + 5
 
-    # pre-calculate cell centers
-    # compute average coordinate for each cell, and store in 'Center' array
-    m.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in m.cell]
-
     top = set()
     not_top = set()
     lines = []
 
-    for i in range(m.n_cells):
+    for i in upward:
 
         # continue if already checked
         if i in top:
@@ -141,11 +137,12 @@ def extract_top_cover(m):
         intersect = m.find_cells_intersecting_line(line.points[0], line.points[1])
 
         if len(intersect) > 1:
-            centers = m.extract_cells(intersect)['Center']
-            max_idx = np.argwhere(centers[:, -1] == np.max(centers[:, -1])).flatten().tolist()
+            # centers = m.extract_cells(intersect)['Center']
+            # max_idx = np.argwhere(centers[:, -1] == np.max(centers[:, -1])).flatten().tolist()
+            max_idx = -1
 
             # add cell index with max z to top
-            top.update(intersect[max_idx])
+            top.add(intersect[max_idx])
 
             # add other cells to not_top
             not_top.update(np.delete(intersect, max_idx))
@@ -155,7 +152,7 @@ def extract_top_cover(m):
         else:
             pass
 
-    return m.extract_cells(list(top)), lines
+    return list(top), lines
 
 
 def calc_V_under_triangle(cell, angles, build_dir, z_min):
