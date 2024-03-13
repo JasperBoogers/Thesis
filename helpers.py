@@ -269,6 +269,9 @@ def extract_x0(ax, ay, f, n):
 
 def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray,
                             build_dir: list | np.ndarray, z_min: list | np.ndarray):
+    _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
+    mesh = rotate_mesh(mesh, R)
+
     # compute cell areas
     mesh = mesh.compute_cell_sizes(length=False, volume=False)
 
@@ -281,8 +284,6 @@ def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.nd
     # dx = []
     # dy = []
     #
-    # _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
-    # mesh = rotate_mesh(mesh, R)
     #
     # for i in range(mesh.n_cells):
     #     c = mesh.extract_cells(i)
