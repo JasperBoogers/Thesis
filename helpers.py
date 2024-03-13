@@ -269,25 +269,44 @@ def extract_x0(ax, ay, f, n):
 
 def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray,
                             build_dir: list | np.ndarray, z_min: list | np.ndarray):
+    # compute cell areas
+    mesh = mesh.compute_cell_sizes(length=False, volume=False)
+
     # compute sensitivities for all cells
     res = Parallel(n_jobs=cpu_count())(
         delayed(calc_V_under_triangle)(mesh.extract_cells(i), angles, build_dir, z_min) for i in range(mesh.n_cells))
 
     f, dx, dy = zip(*res)
-    mesh.cell_data['dVda'] = np.array(dx)
-    mesh.cell_data['dVdb'] = np.array(dy)
-    mesh.cell_data['dV'] = (np.array(dx) + np.array(dy)) / 2  # TODO: define nice metric for combined derivative
+
+    # dx = []
+    # dy = []
+    #
+    # _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
+    # mesh = rotate_mesh(mesh, R)
+    #
+    # for i in range(mesh.n_cells):
+    #     c = mesh.extract_cells(i)
+    #
+    #     _, dx_, dy_ = calc_V_under_triangle(c, angles, build_dir, z_min)
+    #     dx.append(dx_)
+    #     dy.append(dy_)
+
+    thresh = mesh['Normals'][:, 2] < -1e-6
+
+    mesh.cell_data['dVda'] = np.array(dx) / mesh.cell_data['Area'] * thresh
+    mesh.cell_data['dVdb'] = np.array(dy) / mesh.cell_data['Area'] * thresh
+    mesh.cell_data['dV'] = np.linalg.norm(np.array([dx, dy]), axis=0) / mesh.cell_data['Area'] * thresh
     return mesh
 
 
 def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> None:
     p = pv.Plotter()
     if axis == 'x':
-        _ = p.add_mesh(mesh, scalars='dVda', show_edges=True)
+        _ = p.add_mesh(mesh, scalars='dVda')
     elif axis == 'y':
-        _ = p.add_mesh(mesh, scalars='dVdb', show_edges=True)
+        _ = p.add_mesh(mesh, scalars='dVdb')
     else:
-        _ = p.add_mesh(mesh, scalars='dV', show_edges=True)
+        _ = p.add_mesh(mesh, scalars='dV')
 
     p.add_axes()
     p.show()

@@ -311,4 +311,4 @@ if __name__ == "__main__":
     a = [np.deg2rad(45), 0]
     cube = calc_cell_sensitivities(cube, a, b, z_min)
 
-    plot_cell_sensitivities(cube.rotate_x(45), 'x')
+    plot_cell_sensitivities(cube, 'x')
