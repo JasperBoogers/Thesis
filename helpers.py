@@ -311,3 +311,37 @@ def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> 
 
     p.add_axes()
     p.show()
+
+
+def build_overhang_mask(mesh, upward_ids, top_ids):
+    mask = np.zeros(mesh.n_cells)
+
+    for i in upward_ids:
+
+        # get center
+        cell = mesh.extract_cells(i)
+        center = cell['Center'][0]
+        area = cell.area
+
+        # get (upward facing) neighbours
+        neighbors = [n for n in mesh.cell_neighbors(i, 'points') if n in upward_ids]
+        # neighbors = mesh.cell_neighbors(i, 'points')
+        neighbors.append(i)
+
+        val = 0
+        dist = 0
+        for c in neighbors:
+            cell = mesh.extract_cells(c)
+            d = 1 - (np.linalg.norm(cell['Center'][0] - center))
+
+            if c in top_ids:
+                v = 1
+            else:
+                v = 0
+
+            val += v * d
+            dist += d
+
+        mask[i] = val/dist
+
+    return mask

@@ -38,6 +38,86 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -
     return -(volume - msh_rot.volume), [-dVda, -dVdb]
 
 
+def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) -> tuple[float, list]:
+    # extract angles, construct rotation matrices for x and y rotations
+    Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
+
+    # rotate mesh
+    msh_rot = rotate_mesh(msh, R)
+
+    # define z-height of projection plane for fixed projection height
+    z_min = np.array([0, 0, -plane])
+    dzda = dzdb = [0]
+
+    # compute average coordinate for each cell, and store in 'Center' array
+    msh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in msh_rot.cell]
+
+    # extract upward facing facets
+    upward_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] > thresh]
+    top_idx, _ = extract_top_cover(msh_rot, upward_idx)
+
+    mask = build_overhang_mask(msh_rot, upward_idx, top_idx)
+
+    build_dir = np.array([0, 0, 1])
+    volume = 0.0
+    dVda = 0.0
+    dVdb = 0.0
+
+    for idx in range(msh_rot.n_cells):
+        # extract points and normal vector from cell
+        cell = msh_rot.extract_cells(idx)
+        points = np.transpose(cell.points)
+        normal = np.transpose(cell.cell_data.active_normals[0])
+
+        # normal has to be of unit length for area calculation
+        normal /= np.linalg.norm(normal)
+
+        # compute initial points and normal vector
+        points0 = rotate2initial(points, R)
+        normal0 = rotate2initial(normal, R)
+
+        # calculate derivative of normal
+        dnda = dRda @ normal0
+        dndb = dRdb @ normal0
+
+        # calculate the smooth Heaviside of the normal and its derivative
+        k = 10
+        H = smooth_heaviside(1 * normal[-1], k, thresh)
+        dHda = H * (1 - H) * -2 * k * dnda[-1]
+        dHdb = H * (1 - H) * -2 * k * dndb[-1]
+
+        # calculate mask and its derivative
+        k_mask = 3
+        x0_mask = 0.5
+        M = smooth_heaviside(mask[idx], k_mask, x0_mask)
+        dM = M * (1 - M) * -2 * k_mask * mask[idx]
+
+        # calculate area and height
+        A = cell.area * build_dir.dot(normal)
+        h = sum(points[-1]) / 3 - z_min[-1]
+        vol = M * H * A * h
+
+        # calculate area derivative
+        dAda = cell.area * build_dir.dot(dnda)
+        dAdb = cell.area * build_dir.dot(dndb)
+
+        # calculate height derivative
+        dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
+        dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
+
+        # calculate volume derivative and sum
+        dVda_ = M * H * A * dhda + M * H * dAda * h + M * dHda * A * h + dM * H * A * h
+        dVdb_ = M * H * A * dhdb + M * H * dAdb * h + M * dHdb * A * h + dM * H * A * h
+        dVda += dVda_
+        dVdb += dVdb_
+
+        volume += vol
+        dVda += dVda_
+        dVdb += dVdb_
+
+    return -(volume - msh_rot.volume), [-dVda, -dVdb]
+
+
 def plot_top_cover(mesh, angle=0):
     # extract upward facing triangles
     idx = np.arange(mesh.n_cells)[mesh['Normals'][:, 2] > 1e-6]
@@ -134,22 +214,23 @@ if __name__ == '__main__':
 
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(m)
-    # ang = np.linspace(np.deg2rad(-60), np.deg2rad(60), 51)
-    # f = []
-    # da = []
-    # db = []
-    #
-    # # start = time.time()
-    # for a in ang:
-    #     f_, [da_, db_] = SoP_top_cover([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
-    #     f.append(-f_)
-    #     da.append(-da_)
-    #     db.append(-db_)
+    start = time.time()
+    ang = np.linspace(np.deg2rad(-45), np.deg2rad(60), 101)
+    f = []
+    da = []
+    db = []
 
-    ang, f, da, db = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.pi, 101, 'x')
-    f = -f
-    da = -da
-    db = -db
+    for a in ang:
+        f_, [da_, db_] = SoP_top_smooth([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        f.append(-f_)
+        da.append(-da_)
+        db.append(-db_)
+
+    # ang, f, da, db = grid_search_1D(SoP_top_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 201, 'x')
+    # f = -f
+    # da = -da
+    # db = -db
+
     # ax, ay, f = grid_search(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 20)
 
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
@@ -158,13 +239,25 @@ if __name__ == '__main__':
     _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     plt.ylim([-2, 2])
-    plt.title(f'Cube with cutout - rotation about x-axis, Ezair method')
+    plt.title(f'Cube with cutout - rotation about x-axis, Smoothened')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP_cube_rotx_correction.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/SoP_cube_rotx_smooth_y.svg', format='svg', bbox_inches='tight')
+    plt.show()
+    #
+    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 201, 'x')
+
+    _ = plt.figure()
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
+    _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
+    plt.xlabel('Angle [deg]')
+    plt.ylabel(fr'Volume [mm$^3$]')
+    plt.ylim([-2, 2])
+    plt.title('Comparison of smoothing on cube with cutout')
+    plt.legend()
+    # plt.savefig('out/supportvolume/SoP_cube_smooth_comp_y.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     end = time.time()
-    # print(f'Finished in {end-start} seconds')
+    print(f'Finished in {end-start} seconds')
     # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, 'Reference - unit cube')
-
     print()
