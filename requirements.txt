@@ -8,6 +8,9 @@ vtk
 numpy-stl
 pyvista
 pymeshfix==0.16.1
+trimesh
+rtree
+pyembree
 
 imageio
 tqdm
