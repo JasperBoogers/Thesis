@@ -32,6 +32,6 @@ def construct_rotation_matrix(a, b) -> tuple[np.ndarray, np.ndarray, np.ndarray,
     return Rx, Ry, R, dRdx, dRdy
 
 
-def smooth_heaviside(x: float, k: float, x0: float) -> float:
+def smooth_heaviside(x: float | np.ndarray, k: float, x0: float) -> float | np.ndarray:
     H = 1/(1 + np.exp(-2 * k * (x - x0)))
     return H
