@@ -281,14 +281,15 @@ def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.nd
 
     f, dx, dy = zip(*res)
 
+    # f = []
     # dx = []
     # dy = []
-    #
     #
     # for i in range(mesh.n_cells):
     #     c = mesh.extract_cells(i)
     #
-    #     _, dx_, dy_ = calc_V_under_triangle(c, angles, build_dir, z_min)
+    #     f_, dx_, dy_ = calc_V_under_triangle(c, angles, build_dir, z_min)
+    #     f.append(f_)
     #     dx.append(dx_)
     #     dy.append(dy_)
 
@@ -297,24 +298,29 @@ def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.nd
     mesh.cell_data['dVda'] = np.array(dx) / mesh.cell_data['Area'] * thresh
     mesh.cell_data['dVdb'] = np.array(dy) / mesh.cell_data['Area'] * thresh
     mesh.cell_data['dV'] = np.linalg.norm(np.array([dx, dy]), axis=0) / mesh.cell_data['Area'] * thresh
+    mesh.cell_data['V'] = np.array(f) / mesh.cell_data['Area'] * thresh
     return mesh
 
 
 def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> None:
     p = pv.Plotter()
     if axis == 'x':
-        _ = p.add_mesh(mesh, scalars='dVda')
+        scalars = 'dVda'
     elif axis == 'y':
-        _ = p.add_mesh(mesh, scalars='dVdb')
+        scalars = 'dVdb'
+    elif axis == 'V':
+        scalars = 'V'
     else:
-        _ = p.add_mesh(mesh, scalars='dV')
+        scalars = 'dV'
 
+    _ = p.add_mesh(mesh, lighting=False, scalars=scalars, cmap='RdYlGn', show_edges=True)
     p.add_axes()
     p.show()
 
 
-def build_overhang_mask(mesh, upward_ids, top_ids):
-    mask = np.zeros(mesh.n_cells)
+def build_top_mask(mesh, upward_ids, top_ids):
+    # mask = np.zeros(mesh.n_cells)
+    mask = smooth_heaviside(mesh['Normals'][:, 2], 10, 1e-5)
 
     for i in upward_ids:
 
@@ -324,7 +330,15 @@ def build_overhang_mask(mesh, upward_ids, top_ids):
         area = cell.area
 
         # get (upward facing) neighbours
-        neighbors = [n for n in mesh.cell_neighbors(i, 'points') if n in upward_ids]
+        neighbors = set()
+        for n in mesh.cell_neighbors(i, 'points'):
+            for j in mesh.cell_neighbors(n, 'points'):
+                if j in upward_ids:
+                    neighbors.add(j)
+
+        # neighbors = [n for n in mesh.cell_neighbors(i, 'points') if n in upward_ids]
+        # neighbors = [n for n in mesh.cell_neighbors(j, 'points') for j in neighbors if n in upward_ids]
+        neighbors = list(neighbors)
         # neighbors = mesh.cell_neighbors(i, 'points')
         neighbors.append(i)
 
@@ -345,3 +359,83 @@ def build_overhang_mask(mesh, upward_ids, top_ids):
         mask[i] = val/dist
 
     return mask
+
+
+def smooth_top_cover(mesh, upward, build_dir):
+    mask = smooth_heaviside(mesh['Normals'][:, 2], 10, 1e-5)
+    overhang = smooth_heaviside(mesh['Normals'][:, 2], 10, 0.5)
+
+    # create rotation matrices for projection rays
+    proj_angle = np.deg2rad(5)
+    Rx, Ry, _, _, _ = construct_rotation_matrix(proj_angle, proj_angle)
+
+    # rotate all rays by 45 deg around z-axis
+    a = np.deg2rad(45)
+    Rz = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+
+    n_rays = 5
+    directs = [build_dir, Rx @ build_dir, np.transpose(Rx) @ build_dir, Ry @ build_dir, np.transpose(Ry) @ build_dir]
+    directs = np.transpose(Rz @ np.transpose(directs))
+
+    for idx in range(mesh.n_cells):
+
+        # get cell and normal
+        cell = mesh.extract_cells(idx)
+
+        # center is average of point coordinates
+        center = cell['Center']
+        center = center[0]
+
+        # check if any cells intersect that line
+        origins = [center] * n_rays
+        _, inter_rays, inter_cells = mesh.multi_ray_trace(origins, directs, first_point=False)
+
+        # drop intersections with cell idx
+        # inter_points = inter_points[inter_cells != idx]
+        inter_rays = inter_rays[inter_cells != idx]
+        inter_cells = inter_cells[inter_cells != idx]
+
+        for r in set(inter_rays):
+            c = mesh.extract_cells(inter_cells[inter_rays == r][0])['Center']
+            mask[idx] -= np.dot(build_dir, c[0] - center)**2 / n_rays * overhang[idx]
+    return mask
+
+
+def smooth_overhang(mesh: pv.PolyData | pv.DataSet, build_dir: np.ndarray,
+                    threshold: float, smoothing: int | float) -> np.ndarray:
+
+    # construct
+    k = smoothing
+    overhang = smooth_heaviside(-1 * mesh['Normals'][:, 2], k, -threshold)
+    upward = smooth_heaviside(mesh['Normals'][:, 2], k, threshold)
+
+    # create rotation matrices for projection rays
+    angle = np.deg2rad(5)
+    Rx, Ry, _, _, _ = construct_rotation_matrix(angle, angle)
+
+    # rotate all rays by 45 deg around z-axis
+    Rz = np.array([[np.cos(np.deg2rad(45)), -np.sin(np.deg2rad(45)), 0],
+                   [np.sin(np.deg2rad(45)), np.cos(np.deg2rad(45)), 0], [0, 0, 1]])
+
+    n_rays = 10
+    directs = [build_dir, Rx @ build_dir, np.transpose(Rx) @ build_dir, Ry @ build_dir,
+               np.transpose(Ry) @ build_dir]
+    directs = np.transpose(Rz @ np.transpose(directs))
+
+    # loop over cells and subtract value to compensate for overhangs
+    for idx in range(mesh.n_cells):
+        # extract points and normal vector from cell
+        cell = mesh.extract_cells(idx)
+
+        # setup center
+        center = cell['Center'][0]
+        for d in directs:
+            _, ids = mesh.ray_trace(center, center + 3 * d)
+
+            # select first cell that is not idx
+            i = ids[ids != idx]
+            if len(i) > 0:
+                c = mesh.extract_cells(i[0])['Center'][0]
+                overhang[i[0]] -= np.dot(build_dir, c - center) / n_rays * upward[i[0]]
+
+    return overhang
