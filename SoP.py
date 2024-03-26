@@ -46,6 +46,7 @@ def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) 
     msh_rot = rotate_mesh(msh, R)
 
     # define z-height of projection plane for fixed projection height
+    build_dir = np.array([0, 0, 1])
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
@@ -55,10 +56,8 @@ def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) 
     # extract upward facing facets
     upward_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] > thresh]
     top_idx, _ = extract_top_cover(msh_rot, upward_idx)
+    top = smooth_top_cover(msh_rot, upward_idx, build_dir)
 
-    mask = build_overhang_mask(msh_rot, upward_idx, top_idx)
-
-    build_dir = np.array([0, 0, 1])
     volume = 0.0
     dVda = 0.0
     dVdb = 0.0
@@ -82,20 +81,14 @@ def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) 
 
         # calculate the smooth Heaviside of the normal and its derivative
         k = 10
-        H = smooth_heaviside(1 * normal[-1], k, thresh)
+        H = top[idx]
         dHda = H * (1 - H) * -2 * k * dnda[-1]
         dHdb = H * (1 - H) * -2 * k * dndb[-1]
-
-        # calculate mask and its derivative
-        k_mask = 3
-        x0_mask = 0.5
-        M = smooth_heaviside(mask[idx], k_mask, x0_mask)
-        dM = M * (1 - M) * -2 * k_mask * mask[idx]
 
         # calculate area and height
         A = cell.area * build_dir.dot(normal)
         h = sum(points[-1]) / 3 - z_min[-1]
-        vol = M * H * A * h
+        vol = H * A * h
 
         # calculate area derivative
         dAda = cell.area * build_dir.dot(dnda)
@@ -106,8 +99,8 @@ def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) 
         dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
 
         # calculate volume derivative and sum
-        dVda_ = M * H * A * dhda + M * H * dAda * h + M * dHda * A * h + dM * H * A * h
-        dVdb_ = M * H * A * dhdb + M * H * dAdb * h + M * dHdb * A * h + dM * H * A * h
+        dVda_ = H * A * dhda + H * dAda * h + dHda * A * h
+        dVdb_ = H * A * dhdb + H * dAdb * h + dHdb * A * h
         dVda += dVda_
         dVdb += dVdb_
 
@@ -215,21 +208,24 @@ if __name__ == '__main__':
     # set fixed projection distance
     PLANE_OFFSET = calc_min_projection_distance(m)
     start = time.time()
-    ang = np.linspace(np.deg2rad(-45), np.deg2rad(60), 101)
-    f = []
-    da = []
-    db = []
+    # ang = np.linspace(np.deg2rad(-45), np.deg2rad(0), 101)
+    # ang = np.deg2rad([-41, -40, -39])
+    # f = []
+    # da = []
+    # db = []
+    #
+    # for a in ang:
+    #     f_, [da_, db_] = SoP_top_smooth([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
+    #     f.append(-f_)
+    #     da.append(-da_)
+    #     db.append(-db_)
 
-    for a in ang:
-        f_, [da_, db_] = SoP_top_smooth([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
-        f.append(-f_)
-        da.append(-da_)
-        db.append(-db_)
-
-    # ang, f, da, db = grid_search_1D(SoP_top_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 201, 'x')
-    # f = -f
-    # da = -da
-    # db = -db
+    a = np.deg2rad(180)
+    step = 201
+    ang, f, da, db = grid_search_1D(SoP_top_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+    f = -f
+    da = -da
+    db = -db
 
     # ax, ay, f = grid_search(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 20)
 
@@ -241,20 +237,20 @@ if __name__ == '__main__':
     plt.ylim([-2, 2])
     plt.title(f'Cube with cutout - rotation about x-axis, Smoothened')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP_cube_rotx_smooth_y.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/SoP_cube_rotx_smooth_top.svg', format='svg', bbox_inches='tight')
     plt.show()
     #
-    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 201, 'x')
+    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
 
     _ = plt.figure()
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
     _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
     plt.xlabel('Angle [deg]')
     plt.ylabel(fr'Volume [mm$^3$]')
-    plt.ylim([-2, 2])
+    # plt.ylim([-2, 2])
     plt.title('Comparison of smoothing on cube with cutout')
     plt.legend()
-    # plt.savefig('out/supportvolume/SoP_cube_smooth_comp_y.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/SoP_cube_smooth_comp_x.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     end = time.time()
