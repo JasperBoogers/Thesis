@@ -401,26 +401,28 @@ def smooth_top_cover(mesh, upward, build_dir):
     return mask
 
 
-def smooth_overhang(mesh: pv.PolyData | pv.DataSet, build_dir: np.ndarray,
+def smooth_overhang(mesh: pv.PolyData | pv.DataSet, cast_dir: np.ndarray,
                     threshold: float, smoothing: int | float) -> np.ndarray:
 
     # construct
     k = smoothing
     overhang = smooth_heaviside(-1 * mesh['Normals'][:, 2], k, -threshold)
-    upward = smooth_heaviside(mesh['Normals'][:, 2], k, threshold)
+    upward = smooth_heaviside(mesh['Normals'][:, 2], k, 0)
 
     # create rotation matrices for projection rays
-    angle = np.deg2rad(5)
+    angle = np.deg2rad(10)
     Rx, Ry, _, _, _ = construct_rotation_matrix(angle, angle)
 
     # rotate all rays by 45 deg around z-axis
     Rz = np.array([[np.cos(np.deg2rad(45)), -np.sin(np.deg2rad(45)), 0],
                    [np.sin(np.deg2rad(45)), np.cos(np.deg2rad(45)), 0], [0, 0, 1]])
 
-    n_rays = 10
-    directs = [build_dir, Rx @ build_dir, np.transpose(Rx) @ build_dir, Ry @ build_dir,
-               np.transpose(Ry) @ build_dir]
+
+    directs = np.array([cast_dir, Rx @ cast_dir, np.transpose(Rx) @ cast_dir, Ry @ cast_dir,
+               np.transpose(Ry) @ cast_dir])
+    # directs = np.append(directs, np.array([np.transpose(Rz @ np.transpose(i)) for i in directs[1:,:]]), axis=0)
     directs = np.transpose(Rz @ np.transpose(directs))
+    n_rays = directs.shape[0]
 
     # loop over cells and subtract value to compensate for overhangs
     for idx in range(mesh.n_cells):
@@ -430,12 +432,27 @@ def smooth_overhang(mesh: pv.PolyData | pv.DataSet, build_dir: np.ndarray,
         # setup center
         center = cell['Center'][0]
         for d in directs:
-            _, ids = mesh.ray_trace(center, center + 3 * d)
+            _, ids = mesh.ray_trace(center, center + 100 * d)
 
             # select first cell that is not idx
             i = ids[ids != idx]
             if len(i) > 0:
                 c = mesh.extract_cells(i[0])['Center'][0]
-                overhang[i[0]] -= np.dot(build_dir, c - center) / n_rays * upward[i[0]]
+                l = c - center
+                overhang[i[0]] -= np.dot(cast_dir, l)**2 / n_rays * upward[i[0]]
 
-    return overhang
+    mask = np.zeros_like(overhang)
+    for idx in range(mesh.n_cells):
+        # neighbours = mesh.cell_neighbors(idx, 'edges')
+        #
+        # val = 0
+        # d = 0
+        # for n in neighbours:
+        #     val += np.dot(mesh['Normals'][idx], mesh['Normals'][n]) * overhang[n]
+        #     d += np.dot(mesh['Normals'][idx], mesh['Normals'][n])
+        # mask[idx] = (val + 2 * overhang[idx]) / (d + 2)
+
+        n = overhang[mesh.cell_neighbors(idx, 'edges')]
+        mask[idx] = (np.sum(n) + 1 * overhang[idx]) / (len(n) + 1)
+
+    return mask
