@@ -2,8 +2,7 @@ import numpy as np
 
 
 def finite_forward_differences(y, x) -> np.ndarray:
-    h = (x[-1] - x[0])/len(x)
-    return np.diff(y)/h
+    return np.diff(y)/np.diff(x)
 
 
 def construct_skew_matrix(x: float | int, y: float | int, z: float | int) -> np.ndarray:
