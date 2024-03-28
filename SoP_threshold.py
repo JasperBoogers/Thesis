@@ -109,10 +109,12 @@ def overhang_mask_gif(mesh, filename):
 if __name__ == '__main__':
 
     # load file
-    FILE = 'Geometries/chair.stl'
+    FILE = 'Geometries/cube_cutout.stl'
     m = pv.read(FILE)
     m = prep_mesh(m, decimation=0)
     m = m.subdivide(2, subfilter='linear')
+
+    # overhang_mask_gif(m, 'out/supportvolume/SoP/OverhangMask4_averaged.gif')
 
     # set parameters
     OVERHANG_THRESHOLD = -1e-5
@@ -121,7 +123,7 @@ if __name__ == '__main__':
     # grid search
     start = time.time()
 
-    # angles = np.deg2rad([-41, -40, -39])
+    # angles = np.deg2rad([-39, -40, -41, -90, -91])
     # f = []
     # da = []
     # db = []
@@ -133,8 +135,8 @@ if __name__ == '__main__':
     #     db.append(-db_)
 
     a = np.deg2rad(180)
-    step = 201
-    ang, f, da, db = grid_search_1D(SoP_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'y')
+    step = 101
+    ang, f, da, db = grid_search_1D(SoP_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
     f = -f
     da = -da
     db = -db
@@ -145,24 +147,23 @@ if __name__ == '__main__':
     _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
     # plt.ylim([-2, 2])
-    plt.title(f'Cube - rotation about y-axis, smoothened')
+    plt.title(f'Cube - rotation about x-axis, smoothened')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_chair_roty_smooth.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth_average.svg', format='svg', bbox_inches='tight')
     plt.show()
 
-    # ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'y')
-    #
-    # _ = plt.figure()
-    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
-    # _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
-    # plt.xlabel('Angle [deg]')
-    # plt.ylabel(fr'Volume [mm$^3$]')
-    # # plt.ylim([-2, 2])
-    # plt.title('Comparison of smoothing on a chair')
-    # plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_chair_smooth_comp_y.svg', format='svg', bbox_inches='tight')
-    # plt.show()
+    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
 
+    _ = plt.figure()
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
+    _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
+    plt.xlabel('Angle [deg]')
+    plt.ylabel(fr'Volume [mm$^3$]')
+    # plt.ylim([-2, 2])
+    plt.title('Comparison of smoothing on a cube with cutout')
+    plt.legend()
+    # plt.savefig('out/supportvolume/SoP/SoP_chair_smooth_comp_y.svg', format='svg', bbox_inches='tight')
+    plt.show()
 
     end = time.time()
     print(f'Finished in {end - start} seconds')
