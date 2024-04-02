@@ -112,7 +112,7 @@ if __name__ == '__main__':
     FILE = 'Geometries/cube_cutout.stl'
     m = pv.read(FILE)
     m = prep_mesh(m, decimation=0)
-    m = m.subdivide(2, subfilter='linear')
+    # m = m.subdivide(2, subfilter='linear')
 
     # overhang_mask_gif(m, 'out/supportvolume/SoP/OverhangMask4_averaged.gif')
 
@@ -141,28 +141,47 @@ if __name__ == '__main__':
     da = -da
     db = -db
 
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
-    plt.xlabel('Angle [deg]')
-    # plt.ylim([-2, 2])
-    plt.title(f'Cube - rotation about x-axis, smoothened')
-    _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth_average.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    # plt.xlabel('Angle [deg]')
+    # # plt.ylim([-2, 2])
+    # plt.title(f'Cube - rotation about x-axis, smoothened')
+    # _ = plt.legend()
+    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth_35to145.svg', format='svg', bbox_inches='tight')
+    # plt.show()
 
-    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+    m2 = m.subdivide(2, subfilter='linear')
+    ang2, f2, da2, db2 = grid_search_1D(SoP_smooth, m2, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+
+    m3 = m.subdivide(3, subfilter='linear')
+    ang3, f3, da3, db3 = grid_search_1D(SoP_smooth, m3, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
 
     _ = plt.figure()
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
-    _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
+    _ = plt.plot(np.rad2deg(ang), f, label=f'{m.n_cells} facets')
+    _ = plt.plot(np.rad2deg(ang), -f2, label=f'{m2.n_cells} facets')
+    _ = plt.plot(np.rad2deg(ang), -f3, label=f'{m3.n_cells} facets')
+
     plt.xlabel('Angle [deg]')
     plt.ylabel(fr'Volume [mm$^3$]')
     # plt.ylim([-2, 2])
-    plt.title('Comparison of smoothing on a cube with cutout')
+    plt.title('Effect of mesh size on support volume of a cube with cutout')
     plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_chair_smooth_comp_y.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_comp_x.svg', format='svg', bbox_inches='tight')
+    plt.show()
+
+    _ = plt.figure()
+    _ = plt.plot(np.rad2deg(ang), da, label=f'{m.n_cells} facets')
+    _ = plt.plot(np.rad2deg(ang), -da2, label=f'{m2.n_cells} facets')
+    _ = plt.plot(np.rad2deg(ang), -da3, label=f'{m3.n_cells} facets')
+
+    plt.xlabel('Angle [deg]')
+    plt.ylabel(fr'Volume [mm$^3$]')
+    # plt.ylim([-2, 2])
+    plt.title('Effect of mesh size on support volume derivative')
+    plt.legend()
+    plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_x_derivative_comp.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     end = time.time()
