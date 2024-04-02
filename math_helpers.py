@@ -5,6 +5,23 @@ def finite_forward_differences(y, x) -> np.ndarray:
     return np.diff(y)/np.diff(x)
 
 
+def finite_central_differences(y, x):
+    return np.gradient(y, x)
+
+
+def double_finite_central_differences(y, x):
+    h = (x[-1] - x[0])/len(x)
+    df = []
+
+    for i in range(2, len(x)-2):
+        f = (-1*y[i+2] + 8*y[i+1] - 8*y[i-1] + y[i-2])/(12*h)
+        df.append(f)
+
+    df2 = finite_central_differences(y, x)
+
+    return np.concatenate((df2[:2], df, df2[-2:]), axis=None)
+
+
 def construct_skew_matrix(x: float | int, y: float | int, z: float | int) -> np.ndarray:
     return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
 
