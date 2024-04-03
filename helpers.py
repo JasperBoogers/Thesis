@@ -401,23 +401,31 @@ def smooth_top_cover(mesh, upward, build_dir):
     return mask
 
 
-def smooth_overhang(mesh: pv.PolyData | pv.DataSet, cast_dir: np.ndarray,
-                    threshold: float, smoothing: int | float) -> np.ndarray:
+def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb, cast_dir: np.ndarray,
+                    threshold: float, smoothing: int | float) -> tuple:
 
-    # construct
+    # construct upward, downward and combined fields
     k = smoothing
-    overhang = smooth_heaviside(-1 * mesh['Normals'][:, 2], k, -threshold)
-    upward = smooth_heaviside(mesh['Normals'][:, 2], k, 0)
+    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, -threshold)
+    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], k, 0)
+    mask = np.zeros_like(Down)
+    mask_avg = np.zeros_like(Down)
+
+    # set up derivative fields
+    dmask_da = np.zeros_like(Down)
+    dmask_db = np.zeros_like(Down)
+    dmask_da_avg = np.zeros_like(Down)
+    dmask_db_avg = np.zeros_like(Down)
 
     # create rotation matrices for projection rays
-    angle = np.deg2rad(10)
+    angle = np.deg2rad(5)
     Rx, Ry, _, _, _ = construct_rotation_matrix(angle, angle)
 
     # rotate all rays by 45 deg around z-axis
     Rz = np.array([[np.cos(np.deg2rad(45)), -np.sin(np.deg2rad(45)), 0],
                    [np.sin(np.deg2rad(45)), np.cos(np.deg2rad(45)), 0], [0, 0, 1]])
 
-
+    # construct direction vectors for ray tracing
     directs = np.array([cast_dir, Rx @ cast_dir, np.transpose(Rx) @ cast_dir, Ry @ cast_dir,
                np.transpose(Ry) @ cast_dir])
     # directs = np.append(directs, np.array([np.transpose(Rz @ np.transpose(i)) for i in directs[1:,:]]), axis=0)
@@ -425,34 +433,64 @@ def smooth_overhang(mesh: pv.PolyData | pv.DataSet, cast_dir: np.ndarray,
     n_rays = directs.shape[0]
 
     # loop over cells and subtract value to compensate for overhangs
-    for idx in range(mesh.n_cells):
+    for idx in range(rotated_mesh.n_cells):
         # extract points and normal vector from cell
-        cell = mesh.extract_cells(idx)
+        cell = rotated_mesh.extract_cells(idx)
+
+        normals0 = np.transpose(mesh['Normals'][idx])
+        dnda = dRda @ normals0
+        dndb = dRdb @ normals0
+
+        D = Down[idx]
+        dDown_da = D * (1 - D) * -2 * k * dnda[-1]
+        dDown_db = D * (1 - D) * -2 * k * dndb[-1]
+
+        mask[idx] += D
+        dmask_da[idx] += dDown_da
+        dmask_db[idx] += dDown_db
 
         # setup center
         center = cell['Center'][0]
         for d in directs:
-            _, ids = mesh.ray_trace(center, center + 100 * d)
+            _, ids = rotated_mesh.ray_trace(center, center + 100 * d)
 
             # select first cell that is not idx
             i = ids[ids != idx]
             if len(i) > 0:
-                c = mesh.extract_cells(i[0])['Center'][0]
+                c = rotated_mesh.extract_cells(i[0])['Center'][0]
                 l = c - center
-                overhang[i[0]] -= np.dot(cast_dir, l)**2 / n_rays * upward[i[0]]
+                l /= np.linalg.norm(l)
 
-    mask = np.zeros_like(overhang)
-    for idx in range(mesh.n_cells):
-        # neighbours = mesh.cell_neighbors(idx, 'edges')
-        #
-        # val = 0
-        # d = 0
-        # for n in neighbours:
-        #     val += np.dot(mesh['Normals'][idx], mesh['Normals'][n]) * overhang[n]
-        #     d += np.dot(mesh['Normals'][idx], mesh['Normals'][n])
-        # mask[idx] = (val + 2 * overhang[idx]) / (d + 2)
+                U = Up[i[0]]
+                mask_val = np.dot(cast_dir, l) / n_rays * U
+                mask[i[0]] += mask_val/2
 
-        n = overhang[mesh.cell_neighbors(idx, 'edges')]
-        mask[idx] = (np.sum(n) + 1 * overhang[idx]) / (len(n) + 1)
+                normals0 = np.transpose(mesh['Normals'][i[0]])
+                dnda = dRda @ normals0
+                dndb = dRdb @ normals0
 
-    return mask
+                dUp_da = U * (1 - U) * -2 * k * dnda[-1]
+                dUp_db = U * (1 - U) * -2 * k * dndb[-1]
+
+                dl_da = dRda @ rotate2initial(l, R)
+                dl_db = dRdb @ rotate2initial(l, R)
+
+                dmask_da[i[0]] += (np.dot(cast_dir, dl_da) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_da)/2
+                dmask_db[i[0]] += (np.dot(cast_dir, dl_db) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_db)/2
+
+    # for idx in range(rotated_mesh.n_cells):
+    #     neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
+    #
+    #     val = 0
+    #     d = 0
+    #     for n in neighbours:
+    #         val += np.dot(rotated_mesh['Normals'][idx], rotated_mesh['Normals'][n]) * mask[n]
+    #         d += np.dot(rotated_mesh['Normals'][idx], rotated_mesh['Normals'][n])
+    #     mask_avg[idx] = (val + 2 * mask[idx]) / (d + 2)
+    #
+        # neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
+        # mask_avg[idx] = (np.sum(mask[neighbours]) + 1 * mask[idx]) / (len(neighbours) + 1)
+    #     dmask_da_avg[idx] = (np.sum(dmask_da[neighbours]) + 1 * dmask_da[idx]) / (len(neighbours) + 1)
+    #     dmask_db_avg[idx] = (np.sum(dmask_db[neighbours]) + 1 * dmask_db[idx]) / (len(neighbours) + 1)
+
+    return mask, dmask_da, dmask_db

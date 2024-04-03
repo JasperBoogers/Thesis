@@ -5,7 +5,7 @@
       <paths name="jasper@192.168.1.78:22 key">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/pycharm_project_925" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/jasper/Downloads/Code" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>

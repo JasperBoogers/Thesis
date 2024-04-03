@@ -22,7 +22,7 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) 
 
     # compute overhang mask
     k = 10
-    overhang = smooth_overhang(mesh_rot, build_dir, threshold, k)
+    H, dHda, dHdb = smooth_overhang(mesh, mesh_rot, R, dRda, dRdb, build_dir, threshold, k)
 
     # calculate volume
     volume = 0.0
@@ -45,27 +45,22 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) 
         dnda = dRda @ normal0
         dndb = dRdb @ normal0
 
-        # calculate the smooth Heaviside of the normal and its derivative
-        H = overhang[idx]
-        dHda = H * (1 - H) * -2 * k * dnda[-1]
-        dHdb = H * (1 - H) * -2 * k * dndb[-1]
-
         # calculate area and height
-        A = cell.area * -build_dir.dot(normal)
+        A = cell.area * build_dir.dot(normal)
         h = sum(points[-1]) / 3 - z_min[-1]
-        volume += H * A * h
+        volume += H[idx] * A * h
 
         # calculate area derivative
-        dAda = cell.area * -build_dir.dot(dnda)
-        dAdb = cell.area * -build_dir.dot(dndb)
+        dAda = cell.area * build_dir.dot(dnda)
+        dAdb = cell.area * build_dir.dot(dndb)
 
         # calculate height derivative
         dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
         dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
 
         # calculate volume derivative and sum
-        dVda_ = H * A * dhda + H * h * dAda + dHda * A * h
-        dVdb_ = H * A * dhdb + H * h * dAdb + dHdb * A * h
+        dVda_ = H[idx] * A * dhda + H[idx] * h * dAda + dHda[idx] * A * h
+        dVdb_ = H[idx] * A * dhdb + H[idx] * h * dAdb + dHdb[idx] * A * h
         dVda += dVda_
         dVdb += dVdb_
 
@@ -111,8 +106,8 @@ if __name__ == '__main__':
     # load file
     FILE = 'Geometries/cube_cutout.stl'
     m = pv.read(FILE)
-    m = prep_mesh(m, decimation=0)
-    # m = m.subdivide(2, subfilter='linear')
+    m = prep_mesh(m, decimation=0, translate=True)
+    m = m.subdivide(2, subfilter='linear')
 
     # overhang_mask_gif(m, 'out/supportvolume/SoP/OverhangMask4_averaged.gif')
 
@@ -123,66 +118,64 @@ if __name__ == '__main__':
     # grid search
     start = time.time()
 
-    # angles = np.deg2rad([-39, -40, -41, -90, -91])
-    # f = []
-    # da = []
-    # db = []
-    #
-    # for a in angles:
-    #     f_, [da_, db_] = SoP_smooth([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
-    #     f.append(-f_)
-    #     da.append(-da_)
-    #     db.append(-db_)
+    ang = np.deg2rad([0, -90, -40])
+    f = []
+    da = []
+    db = []
+
+    for a in ang:
+        f_, [da_, db_] = SoP_smooth([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
+        f.append(f_)
+        da.append(da_)
+        db.append(db_)
 
     a = np.deg2rad(180)
     step = 101
     ang, f, da, db = grid_search_1D(SoP_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
-    f = -f
-    da = -da
-    db = -db
 
-    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    # plt.xlabel('Angle [deg]')
-    # # plt.ylim([-2, 2])
-    # plt.title(f'Cube - rotation about x-axis, smoothened')
-    # _ = plt.legend()
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    plt.xlabel('Angle [deg]')
+    # plt.ylim([-2, 2])
+    plt.title(f'Cube - rotation about x-axis, smoothened')
+    _ = plt.legend()
     # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth_35to145.svg', format='svg', bbox_inches='tight')
+    plt.show()
+
+    # m2 = m.subdivide(2, subfilter='linear')
+    # ang2, f2, da2, db2 = grid_search_1D(SoP_smooth, m2, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+    #
+    # m3 = m.subdivide(3, subfilter='linear')
+    # ang3, f3, da3, db3 = grid_search_1D(SoP_smooth, m3, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+    #
+    # _ = plt.figure()
+    # _ = plt.plot(np.rad2deg(ang), f, label=f'{m.n_cells} facets')
+    # _ = plt.plot(np.rad2deg(ang), -f2, label=f'{m2.n_cells} facets')
+    # _ = plt.plot(np.rad2deg(ang), -f3, label=f'{m3.n_cells} facets')
+    #
+    # plt.xlabel('Angle [deg]')
+    # plt.ylabel(fr'Volume [mm$^3$]')
+    # # plt.ylim([-2, 2])
+    # plt.title('Effect of mesh size on support volume of a cube with cutout')
+    # plt.legend()
+    # plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_comp_x.svg', format='svg', bbox_inches='tight')
     # plt.show()
-
-    m2 = m.subdivide(2, subfilter='linear')
-    ang2, f2, da2, db2 = grid_search_1D(SoP_smooth, m2, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
-
-    m3 = m.subdivide(3, subfilter='linear')
-    ang3, f3, da3, db3 = grid_search_1D(SoP_smooth, m3, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
-
-    _ = plt.figure()
-    _ = plt.plot(np.rad2deg(ang), f, label=f'{m.n_cells} facets')
-    _ = plt.plot(np.rad2deg(ang), -f2, label=f'{m2.n_cells} facets')
-    _ = plt.plot(np.rad2deg(ang), -f3, label=f'{m3.n_cells} facets')
-
-    plt.xlabel('Angle [deg]')
-    plt.ylabel(fr'Volume [mm$^3$]')
-    # plt.ylim([-2, 2])
-    plt.title('Effect of mesh size on support volume of a cube with cutout')
-    plt.legend()
-    plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_comp_x.svg', format='svg', bbox_inches='tight')
-    plt.show()
-
-    _ = plt.figure()
-    _ = plt.plot(np.rad2deg(ang), da, label=f'{m.n_cells} facets')
-    _ = plt.plot(np.rad2deg(ang), -da2, label=f'{m2.n_cells} facets')
-    _ = plt.plot(np.rad2deg(ang), -da3, label=f'{m3.n_cells} facets')
-
-    plt.xlabel('Angle [deg]')
-    plt.ylabel(fr'Volume [mm$^3$]')
-    # plt.ylim([-2, 2])
-    plt.title('Effect of mesh size on support volume derivative')
-    plt.legend()
-    plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_x_derivative_comp.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    #
+    # _ = plt.figure()
+    # _ = plt.plot(np.rad2deg(ang), da, label=f'{m.n_cells} facets')
+    # _ = plt.plot(np.rad2deg(ang), -da2, label=f'{m2.n_cells} facets')
+    # _ = plt.plot(np.rad2deg(ang), -da3, label=f'{m3.n_cells} facets')
+    #
+    # plt.xlabel('Angle [deg]')
+    # plt.ylabel(fr'Volume [mm$^3$]')
+    # # plt.ylim([-2, 2])
+    # plt.title('Effect of mesh size on support volume derivative')
+    # plt.legend()
+    # plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_x_derivative_comp.svg', format='svg', bbox_inches='tight')
+    # plt.show()
+    print(f'{f[50]}')
 
     end = time.time()
     print(f'Finished in {end - start} seconds')
