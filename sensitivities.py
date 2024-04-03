@@ -15,18 +15,18 @@ def fwd(fun, angles, mesh, threshold, plane, h):
 
 
 def cntrl2(fun, angles, mesh, threshold, plane, h):
-    x1, _ = fun([angles[0] + 2*h, angles[1]], mesh, threshold, plane)
+    x1, _ = fun([angles[0] + 2 * h, angles[1]], mesh, threshold, plane)
     x2, _ = fun([angles[0] + h, angles[1]], mesh, threshold, plane)
     x3, _ = fun([angles[0] - h, angles[1]], mesh, threshold, plane)
-    x4, _ = fun([angles[0] - 2*h, angles[1]], mesh, threshold, plane)
+    x4, _ = fun([angles[0] - 2 * h, angles[1]], mesh, threshold, plane)
 
     y1, _ = fun([angles[0], angles[1] + 2 * h], mesh, threshold, plane)
     y2, _ = fun([angles[0], angles[1] + h], mesh, threshold, plane)
     y3, _ = fun([angles[0], angles[1] - h], mesh, threshold, plane)
     y4, _ = fun([angles[0], angles[1] - 2 * h], mesh, threshold, plane)
 
-    x = (-x1 + 8*x2 - 8*x3 + x4)/(12*h)
-    y = (-y1 + 8*y2 - 8*y3 + y4)/(12*h)
+    x = (-x1 + 8 * x2 - 8 * x3 + x4) / (12 * h)
+    y = (-y1 + 8 * y2 - 8 * y3 + y4) / (12 * h)
     return x, y
 
 
@@ -37,8 +37,8 @@ def cntrl(fun, angles, mesh, threshold, plane, h):
     y2, _ = fun([angles[0], angles[1] + h], mesh, threshold, plane)
     y3, _ = fun([angles[0], angles[1] - h], mesh, threshold, plane)
 
-    x = (x2 - x3)/(2*h)
-    y = (y2 - y3)/(2*h)
+    x = (x2 - x3) / (2 * h)
+    y = (y2 - y3) / (2 * h)
     return x, y
 
 
@@ -56,29 +56,33 @@ def finite_differences_plot(fun, angles, mesh, threshold, plane, h_range, method
 
     if method == 'forward':
         res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        title = f'Forward differences at x={np.rad2deg(angles)} degrees'
     elif method == 'central':
         res = Parallel(n_jobs=cpu_count())(delayed(cntrl)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        title = f'Central differences at x={np.rad2deg(angles)} degrees'
     elif method == 'central2':
         res = Parallel(n_jobs=cpu_count())(delayed(cntrl2)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        title = f'Second order central differences at x={np.rad2deg(angles)} degrees'
     else:
         res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        title = f'Forward differences at x={np.rad2deg(angles)} degrees'
 
     fx, fy = zip(*res)
     f, [dfdx, dfdy] = fun(angles, mesh, threshold, plane)
 
-    if method == 'fwd':
-        fx = np.subtract(fx, f)/h_range
-        fy = np.subtract(fy, f)/h_range
+    if method == 'forward':
+        fx = np.subtract(fx, f) / h_range
+        fy = np.subtract(fy, f) / h_range
 
-    diffx = abs(np.subtract(fx, dfdx)/dfdx)
-    diffy = abs(np.subtract(fy, dfdy)/dfdy)
+    diffx = abs(np.subtract(fx, dfdx) / dfdx)
+    diffy = abs(np.subtract(fy, dfdy) / dfdy)
 
     _ = plt.figure()
-    _ = plt.semilogx(h_range, diffx, 'b', label=r'$f_{,\alpha}$')  #TODO change to double log
-    _ = plt.semilogx(h_range, diffy, 'k', label=r'$f_{,\beta}$')
-    plt.title(f'Finite central differences at x={np.rad2deg(angles)} degrees')
+    _ = plt.loglog(h_range, diffx, 'b', label=r'$V_{,\alpha}$')
+    _ = plt.loglog(h_range, diffy, 'k', label=r'$V_{,\beta}$')
+    plt.title(title)
     plt.xlabel('Step size [-]')
-    plt.ylabel(r'$\frac{|\tilde{f}_{,\theta} - f_{,\theta}|}{|f_{,\theta}|}$')
+    plt.ylabel(r'$\frac{|\tilde{V}_{,\theta} - V_{,\theta}|}{|V_{,\theta}|}$')
     _ = plt.legend()
     if outfile is not None:
         plt.savefig(outfile, format='svg', bbox_inches='tight')
@@ -99,7 +103,7 @@ if __name__ == '__main__':
 
     start = time.time()
     x = np.deg2rad([-70, -70])
-    finite_differences_plot(SoP_smooth, x, m, OVERHANG_THRESHOLD, PLANE_OFFSET, h_range
-                                    , 'out/supportvolume/SoP/2_finite_central_differences_7070_normalized.svg')
+    finite_differences_plot(SoP_smooth, x, m, OVERHANG_THRESHOLD, PLANE_OFFSET, h_range, 'forward'
+                            , 'out/supportvolume/SoP/finite_central_differences_7070_normalized.svg')
     stop = time.time()
     print(f'Time taken: {stop - start} seconds')
