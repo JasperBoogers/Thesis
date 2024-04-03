@@ -13,7 +13,7 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) 
     mesh_rot = rotate_mesh(mesh, R)
 
     # define z-height of projection plane for fixed projection height
-    build_dir = np.array([0, 0, -1])
+    build_dir = np.array([0, 0, 1])
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
@@ -22,7 +22,7 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) 
 
     # compute overhang mask
     k = 10
-    H, dHda, dHdb = smooth_overhang(mesh, mesh_rot, R, dRda, dRdb, build_dir, threshold, k)
+    M, dMda, dMdb = smooth_overhang(mesh, mesh_rot, R, dRda, dRdb, -build_dir, threshold, k)
 
     # calculate volume
     volume = 0.0
@@ -46,21 +46,21 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) 
         dndb = dRdb @ normal0
 
         # calculate area and height
-        A = cell.area * build_dir.dot(normal)
+        A = cell.area * -build_dir.dot(normal)
         h = sum(points[-1]) / 3 - z_min[-1]
-        volume += H[idx] * A * h
+        volume += M[idx] * A * h
 
         # calculate area derivative
-        dAda = cell.area * build_dir.dot(dnda)
-        dAdb = cell.area * build_dir.dot(dndb)
+        dAda = cell.area * -build_dir.dot(dnda)
+        dAdb = cell.area * -build_dir.dot(dndb)
 
         # calculate height derivative
         dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
         dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
 
         # calculate volume derivative and sum
-        dVda_ = H[idx] * A * dhda + H[idx] * h * dAda + dHda[idx] * A * h
-        dVdb_ = H[idx] * A * dhdb + H[idx] * h * dAdb + dHdb[idx] * A * h
+        dVda_ = M[idx] * A * dhda + M[idx] * h * dAda + dMda[idx] * A * h
+        dVdb_ = M[idx] * A * dhdb + M[idx] * h * dAdb + dMdb[idx] * A * h
         dVda += dVda_
         dVdb += dVdb_
 
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     # plt.ylim([-2, 2])
     plt.title(f'Cube - rotation about x-axis, smoothened')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth_35to145.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # m2 = m.subdivide(2, subfilter='linear')
@@ -175,7 +175,8 @@ if __name__ == '__main__':
     # plt.legend()
     # plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_x_derivative_comp.svg', format='svg', bbox_inches='tight')
     # plt.show()
-    print(f'{f[50]}')
+    print(f'at 0 deg: {min(f[40:60])}')
+    print(f'at 45 deg: {max(f[30:50])}')
 
     end = time.time()
     print(f'Finished in {end - start} seconds')
