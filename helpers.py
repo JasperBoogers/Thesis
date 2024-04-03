@@ -418,7 +418,7 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
     dmask_db_avg = np.zeros_like(Down)
 
     # create rotation matrices for projection rays
-    angle = np.deg2rad(5)
+    angle = np.deg2rad(10)
     Rx, Ry, _, _, _ = construct_rotation_matrix(angle, angle)
 
     # rotate all rays by 45 deg around z-axis
@@ -442,8 +442,8 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
         dndb = dRdb @ normals0
 
         D = Down[idx]
-        dDown_da = D * (1 - D) * -2 * k * dnda[-1]
-        dDown_db = D * (1 - D) * -2 * k * dndb[-1]
+        dDown_da = D * (1 - D) * 2 * k * -dnda[-1]
+        dDown_db = D * (1 - D) * 2 * k * -dndb[-1]
 
         mask[idx] += D
         dmask_da[idx] += dDown_da
@@ -457,26 +457,28 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
             # select first cell that is not idx
             i = ids[ids != idx]
             if len(i) > 0:
-                c = rotated_mesh.extract_cells(i[0])['Center'][0]
+                j = i[0]
+
+                c = rotated_mesh.extract_cells(j)['Center'][0]
                 l = c - center
                 l /= np.linalg.norm(l)
 
-                U = Up[i[0]]
+                U = Up[j]
                 mask_val = np.dot(cast_dir, l) / n_rays * U
                 mask[i[0]] += mask_val/2
 
-                normals0 = np.transpose(mesh['Normals'][i[0]])
-                dnda = dRda @ normals0
-                dndb = dRdb @ normals0
+                normals0 = np.transpose(mesh['Normals'][j])
+                dnj_da = dRda @ normals0
+                dnj_db = dRdb @ normals0
 
-                dUp_da = U * (1 - U) * -2 * k * dnda[-1]
-                dUp_db = U * (1 - U) * -2 * k * dndb[-1]
+                dUp_da = U * (1 - U) * 2 * k * dnj_da[-1]
+                dUp_db = U * (1 - U) * 2 * k * dnj_db[-1]
 
                 dl_da = dRda @ rotate2initial(l, R)
                 dl_db = dRdb @ rotate2initial(l, R)
 
-                dmask_da[i[0]] += (np.dot(cast_dir, dl_da) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_da)/2
-                dmask_db[i[0]] += (np.dot(cast_dir, dl_db) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_db)/2
+                dmask_da[j] += (np.dot(cast_dir, dl_da) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_da)/2
+                dmask_db[j] += (np.dot(cast_dir, dl_db) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_db)/2
 
     # for idx in range(rotated_mesh.n_cells):
     #     neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
