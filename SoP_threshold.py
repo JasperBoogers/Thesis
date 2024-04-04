@@ -22,7 +22,7 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) 
 
     # compute overhang mask
     k = 10
-    M, dMda, dMdb = smooth_overhang(mesh, mesh_rot, R, dRda, dRdb, -build_dir, threshold, k)
+    M, dMda, dMdb = smooth_overhang_upward(mesh, mesh_rot, R, dRda, dRdb, -build_dir, threshold, k)
 
     # calculate volume
     volume = 0.0
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     # plt.ylim([-2, 2])
     plt.title(f'Cube - rotation about x-axis, smoothened')
     _ = plt.legend()
-    plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # m2 = m.subdivide(2, subfilter='linear')
