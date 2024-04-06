@@ -553,47 +553,48 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, c
         dnda = dRda @ normals0
         dndb = dRdb @ normals0
 
-        D = Down[idx]
-        dDown_da = D * (1 - D) * 2 * k * -dnda[-1]
-        dDown_db = D * (1 - D) * 2 * k * -dndb[-1]
+        Di = Down[idx]
+        dDi_da = Di * (1 - Di) * 2 * k * -dnda[-1]
+        dDi_db = Di * (1 - Di) * 2 * k * -dndb[-1]
 
-        mask[idx] += D
-        dmask_da[idx] += dDown_da
-        dmask_db[idx] += dDown_db
+        Ui = Up[idx]
+        dUi_da = Ui * (1 - Ui) * 2 * k * dnda[-1]
+        dUi_db = Ui * (1 - Ui) * 2 * k * dndb[-1]
+
+        mask[idx] += Di
+        dmask_da[idx] += dDi_da
+        dmask_db[idx] += dDi_db
 
         # loop over connected cells and add support on part contribution
         center = cell['Center'][0]
         conn = connectivity[idx]
         v = len(conn)
 
-        for j in conn:
-            c = rotated_mesh.extract_cells(j)['Center'][0]
-            l = center - c
-            l /= np.linalg.norm(l)
+        if v > 0:
+            c = rotated_mesh.extract_cells(conn)['Center']
+            l = np.subtract(center, c)
+            l = l / np.linalg.norm(l, axis=1)[:, None]
 
-            Dj = Down[j]
-            Ui = Up[idx]
+            Dj = Down[conn]
 
-            mask_val = np.dot(cast_dir, l) * Dj * Ui
-            mask[idx] += mask_val / v
+            mask_val = np.sum(np.dot(cast_dir, l.transpose()) * Dj) * Ui / v
+            mask[idx] += mask_val
 
-            normals0 = np.transpose(mesh['Normals'][j])
-            dnj_da = dRda @ normals0
-            dnj_db = dRdb @ normals0
+            normals0_ = np.transpose(mesh['Normals'][conn])
+            dnj_da = np.transpose(dRda @ normals0_)
+            dnj_db = np.transpose(dRdb @ normals0_)
 
-            dDj_da = Dj * (1 - Dj) * 2 * k * -dnj_da[-1]
-            dDj_db = Dj * (1 - Dj) * 2 * k * -dnj_db[-1]
+            dDj_da = Dj * (1 - Dj) * 2 * k * -dnj_da[:, -1]
+            dDj_db = Dj * (1 - Dj) * 2 * k * -dnj_db[:, -1]
 
-            dUi_da = Ui * (1 - Ui) * 2 * k * dnda[-1]
-            dUi_db = Ui * (1 - Ui) * 2 * k * dndb[-1]
+            dl_da = np.transpose(dRda @ rotate2initial(l.transpose(), R))
+            dl_db = np.transpose(dRdb @ rotate2initial(l.transpose(), R))
 
-            dl_da = dRda @ rotate2initial(l, R)
-            dl_db = dRdb @ rotate2initial(l, R)
+            dm_da_val = np.sum(np.dot(cast_dir, dl_da.transpose()) * Dj * Ui + np.dot(cast_dir, l.transpose()) * dDj_da * Ui + np.dot(cast_dir, l.transpose()) * Dj * dUi_da) / v
+            dm_db_val = np.sum(np.dot(cast_dir, dl_db.transpose()) * Dj * Ui + np.dot(cast_dir, l.transpose()) * dDj_db * Ui + np.dot(cast_dir, l.transpose()) * Dj * dUi_db) / v
 
-            dmask_da[idx] += (np.dot(cast_dir, dl_da) * Dj * Ui + np.dot(cast_dir, l) * dDj_da * Ui +
-                              np.dot(cast_dir, l) * Dj * dUi_da) / v
-            dmask_db[idx] += (np.dot(cast_dir, dl_db) * Dj * Ui + np.dot(cast_dir, l) * dDj_db * Ui +
-                              np.dot(cast_dir, l) * Dj * dUi_db) / v
+            dmask_da[idx] += dm_da_val
+            dmask_db[idx] += dm_db_val
 
     return mask, dmask_da, dmask_db
 
