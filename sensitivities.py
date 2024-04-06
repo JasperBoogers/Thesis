@@ -3,6 +3,7 @@ import numpy as np
 import pyvista as pv
 import matplotlib.pyplot as plt
 from helpers import *
+from io_helpers import read_connectivity_csv
 from SoP_threshold import SoP_smooth
 from joblib import delayed, Parallel
 
@@ -43,16 +44,6 @@ def cntrl(fun, angles, mesh, args, h):
 
 
 def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', outfile=None):
-    # fx = []
-    # fy = []
-    # for h in h_range:
-    #     fplush_x, _ = fun([angles[0] + h, angles[1]], mesh, threshold, plane)
-    #     fplush_y, _ = fun([angles[0], angles[1] + h], mesh, threshold, plane)
-    #     fx.append(fplush_x)
-    #     fy.append(fplush_y)
-    #
-    # fx = np.array(fx)
-    # fy = np.array(fy)
 
     if method == 'forward':
         res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, args, h) for h in h_range)
@@ -87,6 +78,57 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
     if outfile is not None:
         plt.savefig(outfile, format='svg', bbox_inches='tight')
     plt.show()
+
+
+def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray,
+                            build_dir: list | np.ndarray, z_min: list | np.ndarray):
+    _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
+    mesh = rotate_mesh(mesh, R)
+
+    # compute cell areas
+    mesh = mesh.compute_cell_sizes(length=False, volume=False)
+
+    # compute sensitivities for all cells
+    res = Parallel(n_jobs=cpu_count())(
+        delayed(calc_V_under_triangle)(mesh.extract_cells(i), angles, build_dir, z_min) for i in range(mesh.n_cells))
+
+    f, dx, dy = zip(*res)
+
+    # f = []
+    # dx = []
+    # dy = []
+    #
+    # for i in range(mesh.n_cells):
+    #     c = mesh.extract_cells(i)
+    #
+    #     f_, dx_, dy_ = calc_V_under_triangle(c, angles, build_dir, z_min)
+    #     f.append(f_)
+    #     dx.append(dx_)
+    #     dy.append(dy_)
+
+    thresh = mesh['Normals'][:, 2] < -1e-6
+
+    mesh.cell_data['dVda'] = np.array(dx) / mesh.cell_data['Area'] * thresh
+    mesh.cell_data['dVdb'] = np.array(dy) / mesh.cell_data['Area'] * thresh
+    mesh.cell_data['dV'] = np.linalg.norm(np.array([dx, dy]), axis=0) / mesh.cell_data['Area'] * thresh
+    mesh.cell_data['V'] = np.array(f) / mesh.cell_data['Area'] * thresh
+    return mesh
+
+
+def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> None:
+    p = pv.Plotter()
+    if axis == 'x':
+        scalars = 'dVda'
+    elif axis == 'y':
+        scalars = 'dVdb'
+    elif axis == 'V':
+        scalars = 'V'
+    else:
+        scalars = 'dV'
+
+    _ = p.add_mesh(mesh, lighting=False, scalars=scalars, cmap='RdYlGn', show_edges=True)
+    p.add_axes()
+    p.show()
 
 
 if __name__ == '__main__':

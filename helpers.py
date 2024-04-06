@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from os import cpu_count
 from joblib import delayed, Parallel
 from math_helpers import *
-import csv
+from io_helpers import *
 
 
 def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, translate=True) -> pv.PolyData:
@@ -277,57 +277,6 @@ def extract_x0(ax, ay, f, n):
     return [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(n)]
 
 
-def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray,
-                            build_dir: list | np.ndarray, z_min: list | np.ndarray):
-    _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
-    mesh = rotate_mesh(mesh, R)
-
-    # compute cell areas
-    mesh = mesh.compute_cell_sizes(length=False, volume=False)
-
-    # compute sensitivities for all cells
-    res = Parallel(n_jobs=cpu_count())(
-        delayed(calc_V_under_triangle)(mesh.extract_cells(i), angles, build_dir, z_min) for i in range(mesh.n_cells))
-
-    f, dx, dy = zip(*res)
-
-    # f = []
-    # dx = []
-    # dy = []
-    #
-    # for i in range(mesh.n_cells):
-    #     c = mesh.extract_cells(i)
-    #
-    #     f_, dx_, dy_ = calc_V_under_triangle(c, angles, build_dir, z_min)
-    #     f.append(f_)
-    #     dx.append(dx_)
-    #     dy.append(dy_)
-
-    thresh = mesh['Normals'][:, 2] < -1e-6
-
-    mesh.cell_data['dVda'] = np.array(dx) / mesh.cell_data['Area'] * thresh
-    mesh.cell_data['dVdb'] = np.array(dy) / mesh.cell_data['Area'] * thresh
-    mesh.cell_data['dV'] = np.linalg.norm(np.array([dx, dy]), axis=0) / mesh.cell_data['Area'] * thresh
-    mesh.cell_data['V'] = np.array(f) / mesh.cell_data['Area'] * thresh
-    return mesh
-
-
-def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> None:
-    p = pv.Plotter()
-    if axis == 'x':
-        scalars = 'dVda'
-    elif axis == 'y':
-        scalars = 'dVdb'
-    elif axis == 'V':
-        scalars = 'V'
-    else:
-        scalars = 'dV'
-
-    _ = p.add_mesh(mesh, lighting=False, scalars=scalars, cmap='RdYlGn', show_edges=True)
-    p.add_axes()
-    p.show()
-
-
 def build_top_mask(mesh, upward_ids, top_ids):
     # mask = np.zeros(mesh.n_cells)
     mask = smooth_heaviside(mesh['Normals'][:, 2], 10, 1e-5)
@@ -418,13 +367,10 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
     Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, -threshold)
     Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], k, 0)
     mask = np.zeros_like(Down)
-    mask_avg = np.zeros_like(Down)
 
     # set up derivative fields
     dmask_da = np.zeros_like(Down)
     dmask_db = np.zeros_like(Down)
-    dmask_da_avg = np.zeros_like(Down)
-    dmask_db_avg = np.zeros_like(Down)
 
     # create rotation matrices for projection rays
     angle = np.deg2rad(10)
@@ -488,21 +434,6 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
 
                 dmask_da[j] += (np.dot(cast_dir, dl_da) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_da) / 2
                 dmask_db[j] += (np.dot(cast_dir, dl_db) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_db) / 2
-
-    # for idx in range(rotated_mesh.n_cells):
-    #     neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
-    #
-    #     val = 0
-    #     d = 0
-    #     for n in neighbours:
-    #         val += np.dot(rotated_mesh['Normals'][idx], rotated_mesh['Normals'][n]) * mask[n]
-    #         d += np.dot(rotated_mesh['Normals'][idx], rotated_mesh['Normals'][n])
-    #     mask_avg[idx] = (val + 2 * mask[idx]) / (d + 2)
-    #
-    # neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
-    # mask_avg[idx] = (np.sum(mask[neighbours]) + 1 * mask[idx]) / (len(neighbours) + 1)
-    #     dmask_da_avg[idx] = (np.sum(dmask_da[neighbours]) + 1 * dmask_da[idx]) / (len(neighbours) + 1)
-    #     dmask_db_avg[idx] = (np.sum(dmask_db[neighbours]) + 1 * dmask_db[idx]) / (len(neighbours) + 1)
 
     return mask, dmask_da, dmask_db
 
@@ -594,21 +525,6 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
                                                                                       l) / n_rays * dDj_db * Ui + np.dot(
                     cast_dir, l) / n_rays * Dj * dUi_db) / v
 
-    # for idx in range(rotated_mesh.n_cells):
-    #     neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
-    #
-    #     val = 0
-    #     d = 0
-    #     for n in neighbours:
-    #         val += np.dot(rotated_mesh['Normals'][idx], rotated_mesh['Normals'][n]) * mask[n]
-    #         d += np.dot(rotated_mesh['Normals'][idx], rotated_mesh['Normals'][n])
-    #     mask_avg[idx] = (val + 2 * mask[idx]) / (d + 2)
-    #
-    # neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
-    # mask_avg[idx] = (np.sum(mask[neighbours]) + 1 * mask[idx]) / (len(neighbours) + 1)
-    #     dmask_da_avg[idx] = (np.sum(dmask_da[neighbours]) + 1 * dmask_da[idx]) / (len(neighbours) + 1)
-    #     dmask_db_avg[idx] = (np.sum(dmask_db[neighbours]) + 1 * dmask_db[idx]) / (len(neighbours) + 1)
-
     return mask, dmask_da, dmask_db
 
 
@@ -679,38 +595,34 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, c
     return mask, dmask_da, dmask_db
 
 
-def read_connectivity_csv(filename):
-    df = pd.read_csv(filename, sep=',', header=None)
-    data = df.values
+def generate_connectivity(mesh):
+    res = []
 
-    connectivity = []
-    for line in data:
-        if line[0] == -1:
-            # this idx has no connectivity, add empty list
-            connectivity.append([])
-        else:
-            # remove nan values
-            line = line[~np.isnan(line)]
-            # add list of integers to connectivity array
-            connectivity.append(list(line.astype(int)))
+    # add centroid coordinate to cells
+    mesh.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh.cell]
 
-    return connectivity
+    for i in range(mesh.n_cells):
+        arr = []
 
+        for j in range(mesh.n_cells):
+            if i == j:
+                continue
 
-def write_connectivity_csv(connectivity, filename):
-    # empty lists get a -1 to ensure their entry in the csv
-    conn = [c if len(c) > 0 else [-1] for c in connectivity]
+            # # extract cells and normal vectors
+            # ci = mesh.extract_cells(i)
+            # cj = mesh.extract_cells(j)
 
-    write_csv(conn, filename)
+            # check if normals point towards each other
+            line = mesh['Center'][j] - mesh['Center'][i]
+            line = line/np.linalg.norm(line)
+            if np.dot(line, mesh['Normals'][i]) > 0:
 
+                # do ray tracing for check
+                _, ids = mesh.ray_trace(mesh['Center'][i], mesh['Center'][i] + 2 * line)
 
-def read_csv(filename, sep=',', dtype=float):
-    df = pd.read_csv(filename, sep=sep, header=None)
-    return df.astype(dtype).values
+                # check that first intersected cell is j, otherwise append first intersected idx
+                ids = ids[ids != i]
+                arr.append(ids[0])
+        res.append(list(set(arr)))
 
-
-def write_csv(data, filename):
-
-    with open(filename, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerows(data)
+    return res
