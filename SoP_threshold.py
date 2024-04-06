@@ -109,10 +109,10 @@ if __name__ == '__main__':
     start = time.time()
 
     # load file
-    FILE = 'Geometries/cube_cutout.stl'
+    FILE = 'Geometries/bunny/bunny_coarse.stl'
     m = pv.read(FILE)
     m = prep_mesh(m, decimation=0, translate=True)
-    m = m.subdivide(2, subfilter='linear')
+    # m = m.subdivide(2, subfilter='linear')
 
     # overhang_mask_gif(m, 'out/supportvolume/SoP/OverhangMask4_averaged.gif')
 
@@ -120,9 +120,9 @@ if __name__ == '__main__':
     OVERHANG_THRESHOLD = -1e-8
     PLANE_OFFSET = calc_min_projection_distance(m)
     print('Generating connectivity')
-    # conn = generate_connectivity(m)
+    # conn = generate_connectivity_obb(m)
     # print(f'Connectivity took {time.time() - start} seconds')
-    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    conn = read_connectivity_csv('out/sim_data/bunny_coarse_connectivity.csv')
     assert len(conn) == m.n_cells
 
     args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
@@ -142,36 +142,39 @@ if __name__ == '__main__':
     step = 41
 
     # ax, ay, f, da, db = grid_search(SoP_smooth, m, args, a, step)
-
-    # with open('out/sim_data/cube_cutout_contour_f_45deg.csv', 'w', newline='') as file:
+    #
+    # with open('out/sim_data/bunny_contour_f_45deg.csv', 'w', newline='') as file:
     #     writer = csv.writer(file)
     #     writer.writerows(f)
     #
-    # with open('out/sim_data/cube_cutout_contour_dfda_45deg.csv', 'w', newline='') as file:
+    # with open('out/sim_data/bunny_contour_dfda_45deg.csv', 'w', newline='') as file:
     #     writer = csv.writer(file)
     #     writer.writerows(da)
     #
-    # with open('out/sim_data/cube_cutout_contour_dfdb_45deg.csv', 'w', newline='') as file:
+    # with open('out/sim_data/bunny_contour_dfdb_45deg.csv', 'w', newline='') as file:
     #     writer = csv.writer(file)
     #     writer.writerows(db)
 
-    # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, 'Contourplot of cube with cutout',
-    #                   'out/contourplot/Cube/contourplot_cube_cutout_45deg.svg')
+    ax = ay = np.linspace(-np.pi, np.pi, step)
+    f = read_csv('out/sim_data/bunny_contour_dfdb.csv')
 
-    step = 201
-    ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
+    make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, f'Stanford Bunny support volume, derivative about y-axis',
+                      'out/contourplot/Bunny/contourplot_bunny_dfdb.svg')
 
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    plt.xlabel('Angle [deg]')
-    # plt.ylim([-2, 2])
-    plt.title(f'Cube - rotation about x-axis, k=3')
-    _ = plt.legend()
-    plt.savefig('out/supportvolume/SoP/SoP_cube_k3.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    # step = 201
+    # ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
     #
+    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    # plt.xlabel('Angle [deg]')
+    # # plt.ylim([-2, 2])
+    # plt.title(f'Stanford Bunny, {m.n_cells} facets, k=3, threshold=0 deg')
+    # _ = plt.legend()
+    # plt.savefig('out/supportvolume/SoP/SoP_bunny_k3_0deg.svg', format='svg', bbox_inches='tight')
+    # plt.show()
+
 
 
     # m2 = m.subdivide(2, subfilter='linear')
