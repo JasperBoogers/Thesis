@@ -4,6 +4,7 @@ import pyvista as pv
 import numpy as np
 from helpers import *
 from SoP import SoP_top_cover
+from scipy.optimize import minimize
 
 
 def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]:
@@ -116,7 +117,7 @@ if __name__ == '__main__':
     # overhang_mask_gif(m, 'out/supportvolume/SoP/OverhangMask4_averaged.gif')
 
     # set parameters
-    OVERHANG_THRESHOLD = -1e-5
+    OVERHANG_THRESHOLD = -1e-8
     PLANE_OFFSET = calc_min_projection_distance(m)
     print('Generating connectivity')
     # conn = generate_connectivity(m)
@@ -126,48 +127,50 @@ if __name__ == '__main__':
 
     args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
 
-    ang = np.deg2rad([0, -90, -40])
-    f = []
-    da = []
-    db = []
-
-    for a in ang:
-        f_, [da_, db_] = SoP_smooth([a, 0], m, args)
-        f.append(f_)
-        da.append(da_)
-        db.append(db_)
-
+    # ang = np.deg2rad([0, -90, -40])
+    # f = []
+    # da = []
+    # db = []
+    #
+    # for a in ang:
+    #     f_, [da_, db_] = SoP_smooth([a, 0], m, args)
+    #     f.append(f_)
+    #     da.append(da_)
+    #     db.append(db_)
+    #
     a = np.deg2rad(180)
-    step = 21
+    step = 41
 
     # ax, ay, f, da, db = grid_search(SoP_smooth, m, args, a, step)
 
-    # with open('out/sim_data/cube_cutout_contour_f.csv', 'w', newline='') as file:
+    # with open('out/sim_data/cube_cutout_contour_f_45deg.csv', 'w', newline='') as file:
     #     writer = csv.writer(file)
     #     writer.writerows(f)
     #
-    # with open('out/sim_data/cube_cutout_contour_dfda.csv', 'w', newline='') as file:
+    # with open('out/sim_data/cube_cutout_contour_dfda_45deg.csv', 'w', newline='') as file:
     #     writer = csv.writer(file)
     #     writer.writerows(da)
     #
-    # with open('out/sim_data/cube_cutout_contour_dfdb.csv', 'w', newline='') as file:
+    # with open('out/sim_data/cube_cutout_contour_dfdb_45deg.csv', 'w', newline='') as file:
     #     writer = csv.writer(file)
     #     writer.writerows(db)
-    #
-    # make_contour_plot(ax, ay, f, 'Contourplot of cube with cutout', 'out/contourplot/Cube/contourplot_cube_cutout.svg')
 
-    # ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
-    #
-    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    # plt.xlabel('Angle [deg]')
-    # # plt.ylim([-2, 2])
-    # plt.title(f'Cube - rotation about x-axis, smoothened')
-    # _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_connectivity.svg', format='svg', bbox_inches='tight')
-    # plt.show()
+    # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, 'Contourplot of cube with cutout',
+    #                   'out/contourplot/Cube/contourplot_cube_cutout_45deg.svg')
+
+    step = 201
+    ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
+
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    plt.xlabel('Angle [deg]')
+    # plt.ylim([-2, 2])
+    plt.title(f'Cube - rotation about x-axis, k=3')
+    _ = plt.legend()
+    plt.savefig('out/supportvolume/SoP/SoP_cube_k3.svg', format='svg', bbox_inches='tight')
+    plt.show()
     #
 
 
@@ -202,6 +205,26 @@ if __name__ == '__main__':
     # plt.legend()
     # plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_x_derivative_comp.svg', format='svg', bbox_inches='tight')
     # plt.show()
+
+    # f = read_csv('out/sim_data/cube_cutout_contour_f.csv')
+    # ax = ay = np.linspace(-np.pi, np.pi, 21)
+    # x0 = extract_x0(ax, ay, f, 5)
+    #
+    # res = []
+    #
+    # for i in range(5):
+    #     s = time.time()
+    #
+    #     # set initial condition
+    #     a = np.array(x0[i])
+    #     print(f'Iteration {i + 1} with x0: {np.rad2deg(a)} degrees')
+    #
+    #     y = minimize(SoP_smooth, a, jac=True, args=(m, args))
+    #     end = time.time() - s
+    #     print(y)
+    #     print(f'Optimal orientation at {np.rad2deg(y.x)} degrees')
+    #     print(f'Computation time: {end} s')
+    #     res.append(y)
 
     end = time.time()
     print(f'Finished in {end - start} seconds')
