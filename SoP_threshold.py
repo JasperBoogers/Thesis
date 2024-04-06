@@ -4,7 +4,6 @@ import pyvista as pv
 import numpy as np
 from helpers import *
 from SoP import SoP_top_cover
-from ray_tracing import generate_connectivity
 
 
 def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]:
@@ -127,35 +126,35 @@ if __name__ == '__main__':
 
     args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
 
-    # ang = np.deg2rad([0, -90, -40])
-    # f = []
-    # da = []
-    # db = []
-    #
-    # for a in ang:
-    #     f_, [da_, db_] = SoP_smooth([a, 0], m, args)
-    #     f.append(f_)
-    #     da.append(da_)
-    #     db.append(db_)
+    ang = np.deg2rad([0, -90, -40])
+    f = []
+    da = []
+    db = []
+
+    for a in ang:
+        f_, [da_, db_] = SoP_smooth([a, 0], m, args)
+        f.append(f_)
+        da.append(da_)
+        db.append(db_)
 
     a = np.deg2rad(180)
     step = 21
 
-    ax, ay, f, da, db = grid_search(SoP_smooth, m, args, a, step)
+    # ax, ay, f, da, db = grid_search(SoP_smooth, m, args, a, step)
 
-    with open('out/sim_data/cube_cutout_contour_f.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerows(f)
-
-    with open('out/sim_data/cube_cutout_contour_dfda.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerows(da)
-
-    with open('out/sim_data/cube_cutout_contour_dfdb.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerows(db)
-
-    make_contour_plot(ax, ay, f, 'Contourplot of cube with cutout', 'out/contourplot/Cube/contourplot_cube_cutout.svg')
+    # with open('out/sim_data/cube_cutout_contour_f.csv', 'w', newline='') as file:
+    #     writer = csv.writer(file)
+    #     writer.writerows(f)
+    #
+    # with open('out/sim_data/cube_cutout_contour_dfda.csv', 'w', newline='') as file:
+    #     writer = csv.writer(file)
+    #     writer.writerows(da)
+    #
+    # with open('out/sim_data/cube_cutout_contour_dfdb.csv', 'w', newline='') as file:
+    #     writer = csv.writer(file)
+    #     writer.writerows(db)
+    #
+    # make_contour_plot(ax, ay, f, 'Contourplot of cube with cutout', 'out/contourplot/Cube/contourplot_cube_cutout.svg')
 
     # ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
     #

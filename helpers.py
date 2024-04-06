@@ -271,8 +271,11 @@ def grid_search_1D(fun, mesh, func_args, max_angle, angle_step, dim='x'):
     return np.array(a), np.array(f), np.array(da), np.array(db)
 
 
-def extract_x0(ax, ay, f, n):
-    flat_idx = np.argpartition(f.ravel(), -n)[-n:]
+def extract_x0(ax, ay, f, n, smallest=True):
+    if smallest:
+        flat_idx = np.argpartition(f.ravel(), n)[:n]
+    else:
+        flat_idx = np.argpartition(f.ravel(), -n)[-n:]
     row_idx, col_idx = np.unravel_index(flat_idx, f.shape)
     return [[ax[row_idx[k]], ay[col_idx[k]]] for k in range(n)]
 
