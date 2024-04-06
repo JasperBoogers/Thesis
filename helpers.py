@@ -4,6 +4,7 @@ import pandas as pd
 from scipy.spatial.transform import Rotation
 from matplotlib import pyplot as plt
 from os import cpu_count
+from vtk import vtkOBBTree, vtkPoints, vtkCellData, vtkCellArray, vtkPolyData, vtkIdList
 from joblib import delayed, Parallel
 from math_helpers import *
 from io_helpers import *
@@ -14,7 +15,7 @@ def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, transl
     mesh.triangulate(inplace=True)
 
     # decimate mesh by decimate*100%
-    mesh.decimate_pro(decimation)
+    mesh = mesh.decimate_pro(decimation)
 
     # (re)compute normals, and flip normal direction if needed
     mesh.compute_normals(inplace=True, flip_normals=flip)
@@ -627,6 +628,43 @@ def generate_connectivity(mesh):
                 # check that first intersected cell is j, otherwise append first intersected idx
                 ids = ids[ids != i]
                 arr.append(ids[0])
+        res.append(list(set(arr)))
+
+    return res
+
+
+def generate_connectivity_obb(mesh):
+    res = []
+
+    # add centroid coordinate to cells
+    mesh.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh.cell]
+
+    obb = vtkOBBTree()
+    obb.SetDataSet(mesh)
+    obb.BuildLocator()
+
+    con_elm = vtkCellArray()
+
+    for i in range(mesh.n_cells):
+        arr = []
+
+        for j in range(mesh.n_cells):
+            if i != j:
+
+                # check if normals point towards each other
+                line = mesh['Center'][j] - mesh['Center'][i]
+                line = line / np.linalg.norm(line)
+                if np.dot(line, mesh['Normals'][i]) > 0:
+                    # do ray tracing for check
+                    # _, ids = mesh.ray_trace(mesh['Center'][i], mesh['Center'][i] + 2 * line)
+                    sec = vtkPoints()
+
+                    code = obb.IntersectWithLine(mesh['Center'][i] + 1e-3*line, mesh['Center'][j] - 1e-3 * line, sec, None)
+
+                    # check that first intersected cell is j, otherwise append first intersected idx
+                    # ids = ids[ids != i]
+                    if sec.GetData().GetNumberOfTuples() == 0:
+                        arr.append(j)
         res.append(list(set(arr)))
 
     return res
