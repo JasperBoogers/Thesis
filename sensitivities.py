@@ -7,42 +7,42 @@ from SoP_threshold import SoP_smooth
 from joblib import delayed, Parallel
 
 
-def fwd(fun, angles, mesh, threshold, plane, h):
-    fplush_x, _ = fun([angles[0] + h, angles[1]], mesh, threshold, plane)
-    fplush_y, _ = fun([angles[0], angles[1] + h], mesh, threshold, plane)
+def fwd(fun, angles, mesh, args, h):
+    fplush_x, _ = fun([angles[0] + h, angles[1]], mesh, args)
+    fplush_y, _ = fun([angles[0], angles[1] + h], mesh, args)
 
     return fplush_x, fplush_y
 
 
-def cntrl2(fun, angles, mesh, threshold, plane, h):
-    x1, _ = fun([angles[0] + 2 * h, angles[1]], mesh, threshold, plane)
-    x2, _ = fun([angles[0] + h, angles[1]], mesh, threshold, plane)
-    x3, _ = fun([angles[0] - h, angles[1]], mesh, threshold, plane)
-    x4, _ = fun([angles[0] - 2 * h, angles[1]], mesh, threshold, plane)
+def cntrl2(fun, angles, mesh, args, h):
+    x1, _ = fun([angles[0] + 2 * h, angles[1]], mesh, args)
+    x2, _ = fun([angles[0] + h, angles[1]], mesh, args)
+    x3, _ = fun([angles[0] - h, angles[1]], mesh, args)
+    x4, _ = fun([angles[0] - 2 * h, angles[1]], mesh, args)
 
-    y1, _ = fun([angles[0], angles[1] + 2 * h], mesh, threshold, plane)
-    y2, _ = fun([angles[0], angles[1] + h], mesh, threshold, plane)
-    y3, _ = fun([angles[0], angles[1] - h], mesh, threshold, plane)
-    y4, _ = fun([angles[0], angles[1] - 2 * h], mesh, threshold, plane)
+    y1, _ = fun([angles[0], angles[1] + 2 * h], mesh, args)
+    y2, _ = fun([angles[0], angles[1] + h], mesh, args)
+    y3, _ = fun([angles[0], angles[1] - h], mesh, args)
+    y4, _ = fun([angles[0], angles[1] - 2 * h], mesh, args)
 
     x = (-x1 + 8 * x2 - 8 * x3 + x4) / (12 * h)
     y = (-y1 + 8 * y2 - 8 * y3 + y4) / (12 * h)
     return x, y
 
 
-def cntrl(fun, angles, mesh, threshold, plane, h):
-    x2, _ = fun([angles[0] + h, angles[1]], mesh, threshold, plane)
-    x3, _ = fun([angles[0] - h, angles[1]], mesh, threshold, plane)
+def cntrl(fun, angles, mesh, args, h):
+    x2, _ = fun([angles[0] + h, angles[1]], mesh, args)
+    x3, _ = fun([angles[0] - h, angles[1]], mesh, args)
 
-    y2, _ = fun([angles[0], angles[1] + h], mesh, threshold, plane)
-    y3, _ = fun([angles[0], angles[1] - h], mesh, threshold, plane)
+    y2, _ = fun([angles[0], angles[1] + h], mesh, args)
+    y3, _ = fun([angles[0], angles[1] - h], mesh, args)
 
     x = (x2 - x3) / (2 * h)
     y = (y2 - y3) / (2 * h)
     return x, y
 
 
-def finite_differences_plot(fun, angles, mesh, threshold, plane, h_range, method='forward', outfile=None):
+def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', outfile=None):
     # fx = []
     # fy = []
     # for h in h_range:
@@ -55,20 +55,20 @@ def finite_differences_plot(fun, angles, mesh, threshold, plane, h_range, method
     # fy = np.array(fy)
 
     if method == 'forward':
-        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, args, h) for h in h_range)
         title = f'Forward differences at x={np.rad2deg(angles)} degrees'
     elif method == 'central':
-        res = Parallel(n_jobs=cpu_count())(delayed(cntrl)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(cntrl)(fun, angles, mesh, args, h) for h in h_range)
         title = f'Central differences at x={np.rad2deg(angles)} degrees'
     elif method == 'central2':
-        res = Parallel(n_jobs=cpu_count())(delayed(cntrl2)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(cntrl2)(fun, angles, mesh, args, h) for h in h_range)
         title = f'Second order central differences at x={np.rad2deg(angles)} degrees'
     else:
-        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, threshold, plane, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, args, h) for h in h_range)
         title = f'Forward differences at x={np.rad2deg(angles)} degrees'
 
     fx, fy = zip(*res)
-    f, [dfdx, dfdy] = fun(angles, mesh, threshold, plane)
+    f, [dfdx, dfdy] = fun(angles, mesh, args)
 
     if method == 'forward':
         fx = np.subtract(fx, f) / h_range
@@ -99,11 +99,13 @@ if __name__ == '__main__':
     # set parameters
     OVERHANG_THRESHOLD = -1e-5
     PLANE_OFFSET = calc_min_projection_distance(m)
+    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
     h_range = np.logspace(-10, 0, 50)
 
     start = time.time()
-    x = np.deg2rad([-70, -70])
-    finite_differences_plot(SoP_smooth, x, m, OVERHANG_THRESHOLD, PLANE_OFFSET, h_range, 'forward'
-                            , 'out/supportvolume/SoP/finite_central_differences_7070_normalized.svg')
+    x = np.deg2rad([45, 45])
+    args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
+    finite_differences_plot(SoP_smooth, x, m, args, h_range, 'forward'
+                            , 'out/supportvolume/SoP/finite_forward_differences_4545_normalized.svg')
     stop = time.time()
     print(f'Time taken: {stop - start} seconds')

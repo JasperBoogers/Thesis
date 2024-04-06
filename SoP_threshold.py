@@ -1,11 +1,15 @@
+import csv
 import time
 import pyvista as pv
 import numpy as np
 from helpers import *
 from SoP import SoP_top_cover
+from ray_tracing import generate_connectivity
 
 
-def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) -> tuple[float, list]:
+def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]:
+    connectivity, threshold, plane = func_args
+
     # extract angles, construct rotation matrices for x and y rotations
     Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
 
@@ -22,7 +26,7 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, threshold: float, plane: float) 
 
     # compute overhang mask
     k = 10
-    M, dMda, dMdb = smooth_overhang_upward(mesh, mesh_rot, R, dRda, dRdb, -build_dir, threshold, k)
+    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, connectivity, R, dRda, dRdb, -build_dir, threshold, k)
 
     # calculate volume
     volume = 0.0
@@ -102,6 +106,7 @@ def overhang_mask_gif(mesh, filename):
 
 
 if __name__ == '__main__':
+    start = time.time()
 
     # load file
     FILE = 'Geometries/cube_cutout.stl'
@@ -114,35 +119,58 @@ if __name__ == '__main__':
     # set parameters
     OVERHANG_THRESHOLD = -1e-5
     PLANE_OFFSET = calc_min_projection_distance(m)
+    print('Generating connectivity')
+    # conn = generate_connectivity(m)
+    # print(f'Connectivity took {time.time() - start} seconds')
+    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    assert len(conn) == m.n_cells
 
-    # grid search
-    start = time.time()
+    args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
 
-    ang = np.deg2rad([0, -90, -40])
-    f = []
-    da = []
-    db = []
-
-    for a in ang:
-        f_, [da_, db_] = SoP_smooth([a, 0], m, OVERHANG_THRESHOLD, PLANE_OFFSET)
-        f.append(f_)
-        da.append(da_)
-        db.append(db_)
+    # ang = np.deg2rad([0, -90, -40])
+    # f = []
+    # da = []
+    # db = []
+    #
+    # for a in ang:
+    #     f_, [da_, db_] = SoP_smooth([a, 0], m, args)
+    #     f.append(f_)
+    #     da.append(da_)
+    #     db.append(db_)
 
     a = np.deg2rad(180)
-    step = 101
-    ang, f, da, db = grid_search_1D(SoP_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+    step = 21
 
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    plt.xlabel('Angle [deg]')
-    # plt.ylim([-2, 2])
-    plt.title(f'Cube - rotation about x-axis, smoothened')
-    _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_smooth.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    ax, ay, f, da, db = grid_search(SoP_smooth, m, args, a, step)
+
+    with open('out/sim_data/cube_cutout_contour_f.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(f)
+
+    with open('out/sim_data/cube_cutout_contour_dfda.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(da)
+
+    with open('out/sim_data/cube_cutout_contour_dfdb.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(db)
+
+    make_contour_plot(ax, ay, f, 'Contourplot of cube with cutout', 'out/contourplot/Cube/contourplot_cube_cutout.svg')
+
+    # ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
+    #
+    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    # plt.xlabel('Angle [deg]')
+    # # plt.ylim([-2, 2])
+    # plt.title(f'Cube - rotation about x-axis, smoothened')
+    # _ = plt.legend()
+    # plt.savefig('out/supportvolume/SoP/SoP_cube_rotx_connectivity.svg', format='svg', bbox_inches='tight')
+    # plt.show()
+    #
+
 
     # m2 = m.subdivide(2, subfilter='linear')
     # ang2, f2, da2, db2 = grid_search_1D(SoP_smooth, m2, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
@@ -175,8 +203,6 @@ if __name__ == '__main__':
     # plt.legend()
     # plt.savefig('out/supportvolume/SoP/SoP_cube_mesh_x_derivative_comp.svg', format='svg', bbox_inches='tight')
     # plt.show()
-    print(f'at 0 deg: {min(f[40:60])}')
-    print(f'at 45 deg: {max(f[30:50])}')
 
     end = time.time()
     print(f'Finished in {end - start} seconds')

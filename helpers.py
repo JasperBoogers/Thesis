@@ -1,10 +1,12 @@
 import pyvista as pv
 import numpy as np
+import pandas as pd
 from scipy.spatial.transform import Rotation
 from matplotlib import pyplot as plt
 from os import cpu_count
 from joblib import delayed, Parallel
 from math_helpers import *
+import csv
 
 
 def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, translate=True) -> pv.PolyData:
@@ -229,7 +231,7 @@ def extract_correction_idx(mesh, overhang_idx):
     return list(correction_idx), lines
 
 
-def grid_search(fun, mesh, overhang, offset, max_angle, angle_step):
+def grid_search(fun, mesh, args, max_angle, angle_step):
     # grid search parameters
     ax = ay = np.linspace(-max_angle, max_angle, angle_step)
     # f = np.zeros((ax.shape[0], ay.shape[0]))
@@ -238,20 +240,28 @@ def grid_search(fun, mesh, overhang, offset, max_angle, angle_step):
     #     for j, y in enumerate(ay):
     #         f[j, i] = fun([x, y], mesh, overhang, offset)[0]
 
-    f = Parallel(n_jobs=cpu_count())(delayed(fun)([x, y], mesh, overhang, offset) for x in ax for y in ay)
-    f, _, = zip(*f)
+    f = Parallel(n_jobs=cpu_count())(delayed(fun)([x, y], mesh, args) for x in ax for y in ay)
+    f, d = zip(*f)
+    dx, dy = zip(*d)
+
     f = np.reshape(f, (len(ax), len(ay)))
     f = np.transpose(f)
-    return ax, ay, f
+
+    dx = np.reshape(dx, (len(ax), len(ay)))
+    dx = np.transpose(dx)
+    dy = np.reshape(dy, (len(ax), len(ay)))
+    dy = np.transpose(dy)
+
+    return ax, ay, f, dx, dy
 
 
-def grid_search_1D(fun, mesh, overhang, offset, max_angle, angle_step, dim='x'):
+def grid_search_1D(fun, mesh, func_args, max_angle, angle_step, dim='x'):
     a = np.linspace(-max_angle, max_angle, angle_step)
 
     if dim == 'x':
-        f = Parallel(n_jobs=cpu_count())(delayed(fun)([ai, 0], mesh, overhang, offset) for ai in a)
+        f = Parallel(n_jobs=cpu_count())(delayed(fun)([ai, 0], mesh, func_args) for ai in a)
     elif dim == 'y':
-        f = Parallel(n_jobs=cpu_count())(delayed(fun)([0, ai], mesh, overhang, offset) for ai in a)
+        f = Parallel(n_jobs=cpu_count())(delayed(fun)([0, ai], mesh, func_args) for ai in a)
     else:
         print('Invalid')
         return
@@ -510,7 +520,7 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
     dmask_db = np.zeros_like(Down)
 
     # create rotation matrices for projection rays
-    angle = np.deg2rad(5)
+    angle = np.deg2rad(30)
     Rx, Ry, _, _, _ = construct_rotation_matrix(angle, angle)
 
     # rotate all rays by 45 deg around z-axis
@@ -558,22 +568,31 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
                 l = c - center
                 l /= np.linalg.norm(l)
 
-                U = Down[j]
-                mask_val = np.dot(cast_dir, l) / n_rays * U
-                mask[idx] += mask_val / 2
+                Dj = Down[j]
+                Ui = Up[idx]
+                v = 3
+                mask_val = np.dot(cast_dir, l) / n_rays * Dj * Ui
+                mask[idx] += mask_val / v
 
                 normals0 = np.transpose(mesh['Normals'][j])
                 dnj_da = dRda @ normals0
                 dnj_db = dRdb @ normals0
 
-                dUp_da = U * (1 - U) * 2 * k * -dnj_da[-1]
-                dUp_db = U * (1 - U) * 2 * k * -dnj_db[-1]
+                dDj_da = Dj * (1 - Dj) * 2 * k * -dnj_da[-1]
+                dDj_db = Dj * (1 - Dj) * 2 * k * -dnj_db[-1]
+
+                dUi_da = Ui * (1 - Ui) * 2 * k * dnda[-1]
+                dUi_db = Ui * (1 - Ui) * 2 * k * dndb[-1]
 
                 dl_da = dRda @ rotate2initial(l, R)
                 dl_db = dRdb @ rotate2initial(l, R)
 
-                dmask_da[idx] += (np.dot(cast_dir, dl_da) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_da) / 2
-                dmask_db[idx] += (np.dot(cast_dir, dl_db) / n_rays * U + np.dot(cast_dir, l) / n_rays * dUp_db) / 2
+                dmask_da[idx] += (np.dot(cast_dir, dl_da) / n_rays * Dj * Ui + np.dot(cast_dir,
+                                                                                      l) / n_rays * dDj_da * Ui + np.dot(
+                    cast_dir, l) / n_rays * Dj * dUi_da) / v
+                dmask_db[idx] += (np.dot(cast_dir, dl_db) / n_rays * Dj * Ui + np.dot(cast_dir,
+                                                                                      l) / n_rays * dDj_db * Ui + np.dot(
+                    cast_dir, l) / n_rays * Dj * dUi_db) / v
 
     # for idx in range(rotated_mesh.n_cells):
     #     neighbours = rotated_mesh.cell_neighbors(idx, 'edges')
@@ -591,3 +610,107 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
     #     dmask_db_avg[idx] = (np.sum(dmask_db[neighbours]) + 1 * dmask_db[idx]) / (len(neighbours) + 1)
 
     return mask, dmask_da, dmask_db
+
+
+def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, connectivity, R, dRda, dRdb,
+                                 cast_dir: np.ndarray, threshold: float, smoothing: int | float) -> tuple:
+
+    # construct upward, downward and combined fields
+    k = smoothing
+    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, -threshold)
+    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], k, 0)
+    mask = np.zeros_like(Down)
+
+    # set up derivative fields
+    dmask_da = np.zeros_like(Down)
+    dmask_db = np.zeros_like(Down)
+
+    # loop over cells and subtract value to compensate for overhangs
+    for idx in range(rotated_mesh.n_cells):
+        # extract points and normal vector from cell
+        cell = rotated_mesh.extract_cells(idx)
+
+        normals0 = np.transpose(mesh['Normals'][idx])
+        dnda = dRda @ normals0
+        dndb = dRdb @ normals0
+
+        D = Down[idx]
+        dDown_da = D * (1 - D) * 2 * k * -dnda[-1]
+        dDown_db = D * (1 - D) * 2 * k * -dndb[-1]
+
+        mask[idx] += D
+        dmask_da[idx] += dDown_da
+        dmask_db[idx] += dDown_db
+
+        # loop over connected cells and add support on part contribution
+        center = cell['Center'][0]
+        conn = connectivity[idx]
+        v = len(conn)
+
+        for j in conn:
+            c = rotated_mesh.extract_cells(j)['Center'][0]
+            l = center - c
+            l /= np.linalg.norm(l)
+
+            Dj = Down[j]
+            Ui = Up[idx]
+
+            mask_val = np.dot(cast_dir, l) * Dj * Ui
+            mask[idx] += mask_val / v
+
+            normals0 = np.transpose(mesh['Normals'][j])
+            dnj_da = dRda @ normals0
+            dnj_db = dRdb @ normals0
+
+            dDj_da = Dj * (1 - Dj) * 2 * k * -dnj_da[-1]
+            dDj_db = Dj * (1 - Dj) * 2 * k * -dnj_db[-1]
+
+            dUi_da = Ui * (1 - Ui) * 2 * k * dnda[-1]
+            dUi_db = Ui * (1 - Ui) * 2 * k * dndb[-1]
+
+            dl_da = dRda @ rotate2initial(l, R)
+            dl_db = dRdb @ rotate2initial(l, R)
+
+            dmask_da[idx] += (np.dot(cast_dir, dl_da) * Dj * Ui + np.dot(cast_dir, l) * dDj_da * Ui +
+                              np.dot(cast_dir, l) * Dj * dUi_da) / v
+            dmask_db[idx] += (np.dot(cast_dir, dl_db) * Dj * Ui + np.dot(cast_dir, l) * dDj_db * Ui +
+                              np.dot(cast_dir, l) * Dj * dUi_db) / v
+
+    return mask, dmask_da, dmask_db
+
+
+def read_connectivity_csv(filename):
+    df = pd.read_csv(filename, sep=',', header=None)
+    data = df.values
+
+    connectivity = []
+    for line in data:
+        if line[0] == -1:
+            # this idx has no connectivity, add empty list
+            connectivity.append([])
+        else:
+            # remove nan values
+            line = line[~np.isnan(line)]
+            # add list of integers to connectivity array
+            connectivity.append(list(line.astype(int)))
+
+    return connectivity
+
+
+def write_connectivity_csv(connectivity, filename):
+    # empty lists get a -1 to ensure their entry in the csv
+    conn = [c if len(c) > 0 else [-1] for c in connectivity]
+
+    write_csv(conn, filename)
+
+
+def read_csv(filename, sep=',', dtype=float):
+    df = pd.read_csv(filename, sep=sep, header=None)
+    return df.astype(dtype).values
+
+
+def write_csv(data, filename):
+
+    with open(filename, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(data)
