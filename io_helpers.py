@@ -4,8 +4,27 @@ import csv
 
 
 def read_connectivity_csv(filename):
-    df = pd.read_csv(filename, sep=',', header=None)
-    data = df.values
+    # df = pd.read_csv(filename, header=None)
+    # data = df.values
+    #
+    # connectivity = []
+    # for line in data:
+    #     if line[0] == -1:
+    #         # this idx has no connectivity, add empty list
+    #         connectivity.append([])
+    #     else:
+    #         # remove nan values
+    #         line = line[~np.isnan(line)]
+    #         # add list of integers to connectivity array
+    #         connectivity.append(list(line.astype(int)))
+
+    with open(filename, 'r') as file:
+        data = [row for row in csv.reader(file)]
+
+    df = pd.DataFrame(data)
+    if df.shape[-1] == 1:
+        df = df[0].str.split(',', expand=True)
+    data = df.values.astype(float)
 
     connectivity = []
     for line in data:
