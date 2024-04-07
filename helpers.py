@@ -540,7 +540,7 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, c
 
     # construct upward, downward and combined fields
     k = smoothing
-    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, -threshold)
+    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, threshold)
     Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], k, 0)
     mask = np.zeros_like(Down)
 

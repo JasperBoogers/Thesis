@@ -21,6 +21,11 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
+    # uncomment for adaptive projection height
+    # z_min = mesh_rot.points[np.argmin(mesh_rot.points[:, -1]), :]
+    # dzda = dRda @ rotate2initial(z_min, R)
+    # dzdb = dRdb @ rotate2initial(z_min, R)
+
     # compute average coordinate for each cell, and store in 'Center' array
     mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
 
@@ -93,20 +98,22 @@ if __name__ == '__main__':
     start = time.time()
 
     # load file
-    FILE = 'Geometries/bunny/bunny_coarse.stl'
+    FILE = 'Geometries/cube_cutout.stl'
     m = pv.read(FILE)
+    m = m.subdivide(2, subfilter='linear')
     m = prep_mesh(m, decimation=0, translate=True)
-    # m = m.subdivide(2, subfilter='linear')
 
     # overhang_mask_gif(m, 'out/supportvolume/SoP/OverhangMask4_averaged.gif')
 
     # set parameters
-    OVERHANG_THRESHOLD = -1e-8
+    thresh = 90
+    OVERHANG_THRESHOLD = np.cos(np.deg2rad(thresh))  # angle between negative build direction and facet normal
     PLANE_OFFSET = calc_min_projection_distance(m)
     print('Generating connectivity')
     # conn = generate_connectivity_obb(m)
-    # print(f'Connectivity took {time.time() - start} seconds')
-    conn = read_connectivity_csv('out/sim_data/bunny_coarse_connectivity.csv')
+    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    print(f'Connectivity took {time.time() - start} seconds')
+
     assert len(conn) == m.n_cells
 
     args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
@@ -146,17 +153,17 @@ if __name__ == '__main__':
     #                   'out/contourplot/Bunny/contourplot_bunny_dfdb.svg')
 
     step = 201
-    ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
+    axis='y'
+    ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, axis)
 
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
     _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
     _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
     _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
-    # plt.ylim([-2, 2])
-    plt.title(f'Stanford Bunny, {m.n_cells} facets, k=3, threshold=0 deg')
+    plt.title(f'Chair, overhang threshold=0 deg, rotation about {axis}-axis')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP/SoP_bunny_k3_0deg.svg', format='svg', bbox_inches='tight')
+    # plt.savefig(f'out/supportvolume/SoP/SoP_chair_rot{axis}_0deg.svg', format='svg', bbox_inches='tight')
     plt.show()
 
 
