@@ -28,45 +28,29 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]
     k = 10
     M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, connectivity, R, dRda, dRdb, -build_dir, threshold, k)
 
-    # calculate volume
-    volume = 0.0
-    dVda = 0.0
-    dVdb = 0.0
-    for idx in range(mesh_rot.n_cells):
-        # extract points and normal vector from cell
-        cell = mesh_rot.extract_cells(idx)
-        points = np.transpose(cell.points)
-        normal = np.transpose(cell.cell_data.active_normals[0])
+    # extract points and normals
+    points = np.array([c.points for c in mesh_rot.cell])
+    points0 = np.array([c.points for c in mesh.cell])
+    normals = mesh_rot['Normals']
+    normals0 = mesh['Normals']
 
-        # normal has to be of unit length for area calculation
-        normal /= np.linalg.norm(normal)
+    # derivative of normals
+    dnda = np.transpose(dRda @ np.transpose(normals0))
+    dndb = np.transpose(dRdb @ np.transpose(normals0))
 
-        # compute initial points and normal vector
-        points0 = rotate2initial(points, R)
-        normal0 = rotate2initial(normal, R)
+    # compute area and derivative
+    A = mesh['Area'] * np.dot(-build_dir, np.transpose(normals))
+    dAda = mesh['Area'] * np.dot(-build_dir, np.transpose(dnda))
+    dAdb = mesh['Area'] * np.dot(-build_dir, np.transpose(dndb))
 
-        # calculate derivative of normal
-        dnda = dRda @ normal0
-        dndb = dRdb @ normal0
+    # compute height and derivative
+    h_ = np.sum(points[:, :, -1], axis=1) / 3 - z_min[-1]
+    dhda_ = np.sum(np.transpose(dRda @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzda[-1]
+    dhdb_ = np.sum(np.transpose(dRdb @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzdb[-1]
 
-        # calculate area and height
-        A = cell.area * -build_dir.dot(normal)
-        h = sum(points[-1]) / 3 - z_min[-1]
-        volume += M[idx] * A * h
-
-        # calculate area derivative
-        dAda = cell.area * -build_dir.dot(dnda)
-        dAdb = cell.area * -build_dir.dot(dndb)
-
-        # calculate height derivative
-        dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
-        dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
-
-        # calculate volume derivative and sum
-        dVda_ = M[idx] * A * dhda + M[idx] * h * dAda + dMda[idx] * A * h
-        dVdb_ = M[idx] * A * dhdb + M[idx] * h * dAdb + dMdb[idx] * A * h
-        dVda += dVda_
-        dVdb += dVdb_
+    volume = sum(M * A * h_)
+    dVda = np.sum(M * A * dhda_ + M * dAda * h_ + dMda * A * h_)
+    dVdb = np.sum(M * A * dhdb_ + M * dAdb * h_ + dMdb * A * h_)
 
     return volume, [dVda, dVdb]
 
@@ -155,25 +139,25 @@ if __name__ == '__main__':
     #     writer = csv.writer(file)
     #     writer.writerows(db)
 
-    ax = ay = np.linspace(-np.pi, np.pi, step)
-    f = read_csv('out/sim_data/bunny_contour_dfdb.csv')
-
-    make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, f'Stanford Bunny support volume, derivative about y-axis',
-                      'out/contourplot/Bunny/contourplot_bunny_dfdb.svg')
-
-    # step = 201
-    # ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
+    # ax = ay = np.linspace(-np.pi, np.pi, step)
+    # f = read_csv('out/sim_data/bunny_contour_dfdb.csv')
     #
-    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    # plt.xlabel('Angle [deg]')
-    # # plt.ylim([-2, 2])
-    # plt.title(f'Stanford Bunny, {m.n_cells} facets, k=3, threshold=0 deg')
-    # _ = plt.legend()
+    # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, f'Stanford Bunny support volume, derivative about y-axis',
+    #                   'out/contourplot/Bunny/contourplot_bunny_dfdb.svg')
+
+    step = 201
+    ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, 'x')
+
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    plt.xlabel('Angle [deg]')
+    # plt.ylim([-2, 2])
+    plt.title(f'Stanford Bunny, {m.n_cells} facets, k=3, threshold=0 deg')
+    _ = plt.legend()
     # plt.savefig('out/supportvolume/SoP/SoP_bunny_k3_0deg.svg', format='svg', bbox_inches='tight')
-    # plt.show()
+    plt.show()
 
 
 

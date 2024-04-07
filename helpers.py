@@ -10,7 +10,7 @@ from math_helpers import *
 from io_helpers import *
 
 
-def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, translate=True) -> pv.PolyData:
+def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, translate=True) -> pv.DataSet:
     # ensure mesh is only triangles
     mesh.triangulate(inplace=True)
 
@@ -19,6 +19,9 @@ def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, transl
 
     # (re)compute normals, and flip normal direction if needed
     mesh.compute_normals(inplace=True, flip_normals=flip)
+
+    # compute cell areas
+    mesh = mesh.compute_cell_sizes()
 
     # move mesh center of mass to origin
     if translate:
