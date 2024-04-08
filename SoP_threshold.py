@@ -33,29 +33,11 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]
     k = 10
     M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, connectivity, R, dRda, dRdb, -build_dir, threshold, k)
 
-    # extract points and normals
-    points = np.array([c.points for c in mesh_rot.cell])
-    points0 = np.array([c.points for c in mesh.cell])
-    normals = mesh_rot['Normals']
-    normals0 = mesh['Normals']
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, build_dir, z_min, dzda, dzdb)
 
-    # derivative of normals
-    dnda = np.transpose(dRda @ np.transpose(normals0))
-    dndb = np.transpose(dRdb @ np.transpose(normals0))
-
-    # compute area and derivative
-    A = mesh['Area'] * np.dot(-build_dir, np.transpose(normals))
-    dAda = mesh['Area'] * np.dot(-build_dir, np.transpose(dnda))
-    dAdb = mesh['Area'] * np.dot(-build_dir, np.transpose(dndb))
-
-    # compute height and derivative
-    h_ = np.sum(points[:, :, -1], axis=1) / 3 - z_min[-1]
-    dhda_ = np.sum(np.transpose(dRda @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzda[-1]
-    dhdb_ = np.sum(np.transpose(dRdb @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzdb[-1]
-
-    volume = sum(M * A * h_)
-    dVda = np.sum(M * A * dhda_ + M * dAda * h_ + dMda * A * h_)
-    dVdb = np.sum(M * A * dhdb_ + M * dAdb * h_ + dMdb * A * h_)
+    volume = sum(M * A * h)
+    dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
+    dVdb = np.sum(M * A * dhdb + M * dAdb * h + dMdb * A * h)
 
     return volume, [dVda, dVdb]
 
@@ -153,7 +135,7 @@ if __name__ == '__main__':
     #                   'out/contourplot/Bunny/contourplot_bunny_dfdb.svg')
 
     step = 201
-    axis='y'
+    axis='x'
     ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, axis)
 
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
@@ -161,7 +143,7 @@ if __name__ == '__main__':
     _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
     _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
-    plt.title(f'Chair, overhang threshold=0 deg, rotation about {axis}-axis')
+    plt.title(f'Cube, overhang threshold=0 deg, rotation about {axis}-axis')
     _ = plt.legend()
     # plt.savefig(f'out/supportvolume/SoP/SoP_chair_rot{axis}_0deg.svg', format='svg', bbox_inches='tight')
     plt.show()

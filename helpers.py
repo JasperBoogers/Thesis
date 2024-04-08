@@ -199,6 +199,30 @@ def calc_V_under_triangle(cell, angles, build_dir, z_min):
     return V, dVdx, dVdy
 
 
+def calc_V_vectorized(mesh, mesh_rot, dRdx, dRdy, build_dir, z_min, dzdx, dzdy):
+    # extract points and normals
+    points = np.array([c.points for c in mesh_rot.cell])
+    points0 = np.array([c.points for c in mesh.cell])
+    normals = mesh_rot['Normals']
+    normals0 = mesh['Normals']
+
+    # derivative of normals
+    dnda = np.transpose(dRdx @ np.transpose(normals0))
+    dndb = np.transpose(dRdy @ np.transpose(normals0))
+
+    # compute area and derivative
+    area = mesh['Area'] * np.dot(-build_dir, np.transpose(normals))
+    dAdx = mesh['Area'] * np.dot(-build_dir, np.transpose(dnda))
+    dAdy = mesh['Area'] * np.dot(-build_dir, np.transpose(dndb))
+
+    # compute height and derivative
+    height = np.sum(points[:, :, -1], axis=1) / 3 - z_min[-1]
+    dhdx = np.sum(np.transpose(dRdx @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzdx[-1]
+    dhdy = np.sum(np.transpose(dRdy @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzdy[-1]
+
+    return area, dAdx, dAdy, height, dhdx, dhdy
+
+
 def extract_correction_idx(mesh, overhang_idx):
     # set bounds
     bounds = mesh.bounds
