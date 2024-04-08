@@ -10,7 +10,10 @@ from math_helpers import *
 from io_helpers import *
 
 
-def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0.9, flip=False, translate=True) -> pv.DataSet:
+def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0, flip=False, translate=True) -> pv.DataSet:
+    # set to double precision
+    mesh = mesh.points_to_double()
+
     # ensure mesh is only triangles
     mesh.triangulate(inplace=True)
 
