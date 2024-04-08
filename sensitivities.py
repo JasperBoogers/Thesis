@@ -73,7 +73,7 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
     _ = plt.figure()
     _ = plt.loglog(h_range, diffx, 'b', label=r'$V_{,\alpha}$')
     _ = plt.loglog(h_range, diffy, 'k', label=r'$V_{,\beta}$')
-    # plt.title(title)
+    plt.title(title)
     plt.xlabel('Step size [-]')
     plt.ylabel(r'$\frac{|\tilde{V}_{,\theta} - V_{,\theta}|}{|V_{,\theta}|}$')
     _ = plt.legend()
@@ -82,39 +82,24 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
     plt.show()
 
 
-def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray,
-                            build_dir: list | np.ndarray, z_min: list | np.ndarray):
-    _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
-    mesh = rotate_mesh(mesh, R)
+def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray, connectivity,
+                            threshold, build_dir: list | np.ndarray, z_min: list | np.ndarray):
+    _, _, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
+    mesh_rot = rotate_mesh(mesh, R)
 
-    # compute cell areas
-    mesh = mesh.compute_cell_sizes(length=False, volume=False)
+    # compute average coordinate for each cell, and store in 'Center' array
+    mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
+
+    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, connectivity, R, dRda, dRdb, -build_dir, threshold, 10)
 
     # compute sensitivities for all cells
-    res = Parallel(n_jobs=cpu_count())(
-        delayed(calc_V_under_triangle)(mesh.extract_cells(i), angles, build_dir, z_min) for i in range(mesh.n_cells))
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, build_dir, z_min, [0], [0])
 
-    f, dx, dy = zip(*res)
-
-    # f = []
-    # dx = []
-    # dy = []
-    #
-    # for i in range(mesh.n_cells):
-    #     c = mesh.extract_cells(i)
-    #
-    #     f_, dx_, dy_ = calc_V_under_triangle(c, angles, build_dir, z_min)
-    #     f.append(f_)
-    #     dx.append(dx_)
-    #     dy.append(dy_)
-
-    thresh = mesh['Normals'][:, 2] < -1e-6
-
-    mesh.cell_data['dVda'] = np.array(dx) / mesh.cell_data['Area'] * thresh
-    mesh.cell_data['dVdb'] = np.array(dy) / mesh.cell_data['Area'] * thresh
-    mesh.cell_data['dV'] = np.linalg.norm(np.array([dx, dy]), axis=0) / mesh.cell_data['Area'] * thresh
-    mesh.cell_data['V'] = np.array(f) / mesh.cell_data['Area'] * thresh
-    return mesh
+    mesh_rot.cell_data['MA'] = M*A/mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['V'] = (M * A * h)/mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['dVda'] = (M * A * dhda + M * dAda * h + dMda * A * h)/mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['dVdb'] = (M * A * dhdb + M * dAdb * h + dMdb * A * h)/mesh_rot.cell_data['Area']
+    return mesh_rot
 
 
 def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> None:
@@ -126,9 +111,9 @@ def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> 
     elif axis == 'V':
         scalars = 'V'
     else:
-        scalars = 'dV'
+        scalars = 'MA'
 
-    _ = p.add_mesh(mesh, lighting=False, scalars=scalars, cmap='RdYlGn', show_edges=True)
+    _ = p.add_mesh(mesh, lighting=False, scalars=scalars, show_edges=True)
     p.add_axes()
     p.show()
 
@@ -140,6 +125,7 @@ def func(angles, m, arg):
     dvdb = 2*a**2*b
     return v, [dvda, dvdb]
 
+
 def func32(angles, m, arg):
     a, b = angles
     v = a ** 2 * b ** 2
@@ -150,9 +136,9 @@ def func32(angles, m, arg):
 
 if __name__ == '__main__':
     start = time.time()
-
-    # load file
-    # FILE = 'Geometries/cube.stl'
+    #
+    # # load file
+    # FILE = 'Geometries/cube_cutout.stl'
     # m = pv.read(FILE)
     # m = prep_mesh(m, decimation=0)
     # m = m.subdivide(2, subfilter='linear')
@@ -161,52 +147,60 @@ if __name__ == '__main__':
     # OVERHANG_THRESHOLD = -1e-5
     # PLANE_OFFSET = calc_min_projection_distance(m)
     # conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
-    # # conn = [[] for _ in range(m.n_cells)]
     # steps = np.logspace(-10, 0, 10)
     #
-    # x = np.deg2rad([50, 50])
+    # x = np.deg2rad([50, 10])
     # args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
-    # finite_differences_plot(SoP_smooth, x, m, args, steps, 'forward')
-                            # , 'out/supportvolume/SoP/finite_forward_differences_4545_normalized.svg')
+    # finite_differences_plot(SoP_smooth, x, m, args, steps, 'forward'
+    #                         , 'out/supportvolume/SoP/finite_forward_differences_5010_normalized.svg')
 
-    FILE = 'Geometries/cube.stl'
-    m = pv.read(FILE)
-    m = prep_mesh(m, decimation=0)
-    m = m.subdivide(2, subfilter='linear')
-
-    # # set parameters
-    OVERHANG_THRESHOLD = -1e-5
-    PLANE_OFFSET = calc_min_projection_distance(m)
-    args = [OVERHANG_THRESHOLD, PLANE_OFFSET]
-
-    # x = np.deg2rad([10, 10])
-    x = [1, 1]
+    # FILE = 'Geometries/cube.stl'
+    # m = pv.read(FILE)
+    # m = prep_mesh(m, decimation=0)
+    # m = m.subdivide(2, subfilter='linear')
     #
-    steps = np.logspace(-10, 0, 10)
+    # # # set parameters
+    # OVERHANG_THRESHOLD = -1e-5
+    # PLANE_OFFSET = calc_min_projection_distance(m)
+    # args = [OVERHANG_THRESHOLD, PLANE_OFFSET]
+    #
+    # # x = np.deg2rad([10, 10])
+    # x = [1, 1]
+    # #
+    # steps = np.logspace(-10, 0, 10)
+    #
+    # fx = []
+    # fx2 = []
+    # # f, dfdx, _ = support_2D(x, points, faces, normals, plane)
+    # f, [dfdx, _] = func32(x, m, args)
+    # f2, [dfdx2, _] = func(x, m, args)
+    # for h in steps:
+    #     v, w = x
+    #     fhx, [_, _] = func32([v+h, w], m, args)
+    #     fhx2, [_, _] = func([v+h, w], m, args)
+    #     # fhx, _, _ = support_2D([x[0] + h], points, faces, normals, plane)
+    #     dx = (fhx - f)/h
+    #     dx2 = (fhx2 - f2)/h
+    #
+    #     fx.append((dx - dfdx)/dfdx)
+    #     fx2.append((dx2 - dfdx2)/dfdx2)
+    #
+    # plt.loglog(steps, abs(np.array(fx2)), label='double precision')
+    # plt.loglog(steps, abs(np.array(fx)), label='single precision')
+    # plt.xlabel('Step size [-]')
+    # plt.ylabel('Relative error [-]')
+    # plt.legend()
+    # plt.title(r'Relative error for $f=x^{2}y^{2}$ at [1, 1]')
+    # plt.savefig('out/precision_error.svg', format='svg', bbox_inches='tight')
+    # plt.show()
+    # stop = time.time()
+    # print(f'Time taken: {stop - start} seconds')
 
-    fx = []
-    fx2 = []
-    # f, dfdx, _ = support_2D(x, points, faces, normals, plane)
-    f, [dfdx, _] = func32(x, m, args)
-    f2, [dfdx2, _] = func(x, m, args)
-    for h in steps:
-        v, w = x
-        fhx, [_, _] = func32([v+h, w], m, args)
-        fhx2, [_, _] = func([v+h, w], m, args)
-        # fhx, _, _ = support_2D([x[0] + h], points, faces, normals, plane)
-        dx = (fhx - f)/h
-        dx2 = (fhx2 - f2)/h
+    m = pv.read('Geometries/chair.stl')
+    m = m.subdivide(2, subfilter='linear')
+    m = prep_mesh(m)
 
-        fx.append((dx - dfdx)/dfdx)
-        fx2.append((dx2 - dfdx2)/dfdx2)
-
-    plt.loglog(steps, abs(np.array(fx2)), label='double precision')
-    plt.loglog(steps, abs(np.array(fx)), label='single precision')
-    plt.xlabel('Step size [-]')
-    plt.ylabel('Relative error [-]')
-    plt.legend()
-    plt.title(r'Relative error for $f=x^{2}y^{2}$ at [1, 1]')
-    plt.savefig('out/precision_error.svg', format='svg', bbox_inches='tight')
-    plt.show()
-    stop = time.time()
-    print(f'Time taken: {stop - start} seconds')
+    c = read_connectivity_csv('out/sim_data/chair_connectivity.csv')
+    z = calc_min_projection_distance(m)
+    m = calc_cell_sensitivities(m, np.deg2rad([45, 0]), c, 0, np.array([0, 0, 1]), [0, 0, -z])
+    plot_cell_sensitivities(m, 'MA')
