@@ -104,7 +104,8 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
     return ax, ay, f
 
 
-def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane=1.0) -> tuple[float, list]:
+def support_volume_analytic(angles: list, msh: pv.PolyData, func_args) -> tuple[float, list]:
+    thresh, plane = func_args
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -133,23 +134,23 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
         # extract points and normal vector from cell
         cell = msh_rot.extract_cells(idx)
         points = np.transpose(cell.points)
-        normal = np.transpose(cell.cell_data.active_normals)
+        normal = np.transpose(msh_rot['Normals'][idx])
 
         # normal has to be of unit length for area calculation
         normal /= np.linalg.norm(normal)
 
         # compute initial points and normal vector
         points0 = rotate2initial(points, R)
-        normal0 = rotate2initial(normal, R)
+        normal0 = msh['Normals'][idx]
 
         # calculate area and height
-        A = cell.area * -build_dir.dot(normal)[0]
+        A = cell.area * -build_dir.dot(normal)
         h = sum(points[-1]) / 3 - z_min[-1]
         volume += A * h
 
         # calculate area derivative
-        dAda = cell.area * -build_dir.dot(dRda @ normal0)[0]
-        dAdb = cell.area * -build_dir.dot(dRdb @ normal0)[0]
+        dAda = cell.area * -build_dir.dot(dRda @ normal0)
+        dAdb = cell.area * -build_dir.dot(dRdb @ normal0)
 
         # calculate height derivative
         dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
@@ -164,7 +165,8 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, thresh: float, plane
     return -volume, [-dVda, -dVdb]
 
 
-def support_volume_smooth(angles: list, msh: pv.PolyData, thresh, plane=1.0) -> tuple[float, list]:
+def support_volume_smooth(angles: list, msh: pv.PolyData, func_args) -> tuple[float, list]:
+    thresh, plane = func_args
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -200,9 +202,9 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, thresh, plane=1.0) -> 
 
         # calculate the smooth Heaviside of the normal and its derivative
         k = 10
-        H = smooth_heaviside(-1 * normal[-1], k, -thresh)
-        dHda = H * (1 - H) * -2 * k * dnda[-1]
-        dHdb = H * (1 - H) * -2 * k * dndb[-1]
+        H = smooth_heaviside(-1 * normal[-1], k, thresh)
+        dHda = H * (1 - H) * 2 * k * -dnda[-1]
+        dHdb = H * (1 - H) * 2 * k * -dndb[-1]
 
         # calculate area and height
         A = cell.area * -build_dir.dot(normal)
@@ -228,10 +230,10 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, thresh, plane=1.0) -> 
 
 def main_analytic():
     # set parameters
-    OVERHANG_THRESHOLD = -np.sin(60)
+    OVERHANG_THRESHOLD = 0
     NUM_START = 1
     GRID = False
-    MAX_ANGLE = np.deg2rad(180)
+    MAX_ANGLE = 180
     # FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
@@ -268,7 +270,7 @@ def main_analytic():
     # plt.ylim([-0.3, 0.3])
     plt.title(f'3D cube with 60 deg overhang threshold - rotation about x-axis')
     _ = plt.legend()
-    plt.savefig('out/supportvolume/3D_cube_rotx_60deg_smooth.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/3D_cube_rotx_60deg_smooth.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     # perform grid search
