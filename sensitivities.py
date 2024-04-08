@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from helpers import *
 from io_helpers import read_connectivity_csv
 from SoP_threshold import SoP_smooth
+from support_volume_3D import support_volume_smooth, support_volume_analytic
+from support_volume_2D import support_2D
 from joblib import delayed, Parallel
 
 
@@ -65,13 +67,13 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
         fx = np.subtract(fx, f) / h_range
         fy = np.subtract(fy, f) / h_range
 
-    diffx = abs(np.subtract(fx, dfdx) / dfdx)
-    diffy = abs(np.subtract(fy, dfdy) / dfdy)
+    diffx = abs((np.array(fx) - dfdx) / dfdx)
+    diffy = abs((np.array(fy) - dfdy) / dfdy)
 
     _ = plt.figure()
     _ = plt.loglog(h_range, diffx, 'b', label=r'$V_{,\alpha}$')
     _ = plt.loglog(h_range, diffy, 'k', label=r'$V_{,\beta}$')
-    plt.title(title)
+    # plt.title(title)
     plt.xlabel('Step size [-]')
     plt.ylabel(r'$\frac{|\tilde{V}_{,\theta} - V_{,\theta}|}{|V_{,\theta}|}$')
     _ = plt.legend()
@@ -131,23 +133,80 @@ def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> 
     p.show()
 
 
+def func(angles, m, arg):
+    a, b = angles
+    v = a**2 * b**2
+    dvda = 2*a*b**2
+    dvdb = 2*a**2*b
+    return v, [dvda, dvdb]
+
+def func32(angles, m, arg):
+    a, b = angles
+    v = a ** 2 * b ** 2
+    dvda = 2 * a * b ** 2
+    dvdb = 2 * a ** 2 * b
+    return np.float32(v), np.float32([dvda, dvdb])
+
+
 if __name__ == '__main__':
+    start = time.time()
+
     # load file
-    FILE = 'Geometries/cube_cutout.stl'
+    # FILE = 'Geometries/cube.stl'
+    # m = pv.read(FILE)
+    # m = prep_mesh(m, decimation=0)
+    # m = m.subdivide(2, subfilter='linear')
+    #
+    # # set parameters
+    # OVERHANG_THRESHOLD = -1e-5
+    # PLANE_OFFSET = calc_min_projection_distance(m)
+    # conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    # # conn = [[] for _ in range(m.n_cells)]
+    # steps = np.logspace(-10, 0, 10)
+    #
+    # x = np.deg2rad([50, 50])
+    # args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
+    # finite_differences_plot(SoP_smooth, x, m, args, steps, 'forward')
+                            # , 'out/supportvolume/SoP/finite_forward_differences_4545_normalized.svg')
+
+    FILE = 'Geometries/cube.stl'
     m = pv.read(FILE)
     m = prep_mesh(m, decimation=0)
     m = m.subdivide(2, subfilter='linear')
 
-    # set parameters
+    # # set parameters
     OVERHANG_THRESHOLD = -1e-5
     PLANE_OFFSET = calc_min_projection_distance(m)
-    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
-    h_range = np.logspace(-10, 0, 50)
+    args = [OVERHANG_THRESHOLD, PLANE_OFFSET]
 
-    start = time.time()
-    x = np.deg2rad([45, 45])
-    args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
-    finite_differences_plot(SoP_smooth, x, m, args, h_range, 'forward'
-                            , 'out/supportvolume/SoP/finite_forward_differences_4545_normalized.svg')
+    # x = np.deg2rad([10, 10])
+    x = [1, 1]
+    #
+    steps = np.logspace(-10, 0, 10)
+
+    fx = []
+    fx2 = []
+    # f, dfdx, _ = support_2D(x, points, faces, normals, plane)
+    f, [dfdx, _] = func32(x, m, args)
+    f2, [dfdx2, _] = func(x, m, args)
+    for h in steps:
+        v, w = x
+        fhx, [_, _] = func32([v+h, w], m, args)
+        fhx2, [_, _] = func([v+h, w], m, args)
+        # fhx, _, _ = support_2D([x[0] + h], points, faces, normals, plane)
+        dx = (fhx - f)/h
+        dx2 = (fhx2 - f2)/h
+
+        fx.append((dx - dfdx)/dfdx)
+        fx2.append((dx2 - dfdx2)/dfdx2)
+
+    plt.loglog(steps, abs(np.array(fx2)), label='double precision')
+    plt.loglog(steps, abs(np.array(fx)), label='single precision')
+    plt.xlabel('Step size [-]')
+    plt.ylabel('Relative error [-]')
+    plt.legend()
+    plt.title(r'Relative error for $f=x^{2}y^{2}$ at [1, 1]')
+    plt.savefig('out/precision_error.svg', format='svg', bbox_inches='tight')
+    plt.show()
     stop = time.time()
     print(f'Time taken: {stop - start} seconds')
