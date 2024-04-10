@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 import matplotlib as mpl
 from helpers import *
 from latex_params import latex_params
+
 # mpl.rcParams.update(latex_params['params'])
 mpl.rcParams['text.usetex'] = False
 
@@ -52,13 +53,13 @@ def support_2D(t, points, faces, normals, proj):
         if proj is None:
             # calculate h & dh, order of points matters!
             if p2[-1] < p1[-1]:
-                h = (p1[-1] - p2[-1])/2
-                dh = (dp1[-1] - dp2[-1])/2
+                h = (p1[-1] - p2[-1]) / 2
+                dh = (dp1[-1] - dp2[-1]) / 2
             else:
-                h = (p2[-1] - p1[-1])/2
+                h = (p2[-1] - p1[-1]) / 2
                 dh = (dp2[-1] - dp1[-1]) / 2
         else:
-            h = (p2[1]+p1[1])/2 - z_min[-1]
+            h = (p2[1] + p1[1]) / 2 - z_min[-1]
             dh = (dp2[-1] + dp1[-1]) / 2 - dz_min[-1]
 
         # multiply A, h, dA & dh to get S & dS
@@ -71,42 +72,100 @@ def support_2D(t, points, faces, normals, proj):
 if __name__ == "__main__":
 
     # set mesh and projection plane
-    p = np.array([[-1/2, 1/2, 1/2, -1/2], [-1/2, -1/2, 1/2, 1/2]])
+    p = np.array([[-1 / 2, 1 / 2, 1 / 2, -1 / 2], [-1 / 2, -1 / 2, 1 / 2, 1 / 2]])
     f = np.array([[0, 1], [1, 2], [2, 3], [3, 0]])
     n = np.array([[0, -1], [1, 0], [0, 1], [-1, 0]])
-    plane = 1
 
     step = 201
-    angles = np.linspace(-1*np.pi, 1*np.pi, step)
+    angles = np.linspace(-1 * np.pi, 1 * np.pi, step)
+
     support = np.zeros_like(angles)
+    support_adap = np.zeros_like(angles)
+
+    support_fix = np.zeros_like(angles)
     dSdt = np.zeros_like(angles)
+    dSdt_adap = np.zeros_like(angles)
+    dSdt_fix = np.zeros_like(angles)
     lowest_z = np.zeros_like(angles)
     for k, angle in enumerate(angles):
-        s, ds, z = support_2D([angle], p, f, n, plane)
+        s, ds, z = support_2D([angle], p, f, n, None)
+        s_a, ds_a, _ = support_2D([angle], p, f, n, 0)
+        s_f, ds_f, _ = support_2D([angle], p, f, n, 1)
+
         support[k] = s
+        support_fix[k] = s_f
+        support_adap[k] = s_a
+
         dSdt[k] = ds
+        dSdt_fix[k] = ds_f
+        dSdt_adap[k] = ds_a
+
         lowest_z[k] = z
 
-    fig = plt.figure()
-    plt.plot(np.rad2deg(angles), support, 'g', markersize=4, label='General solution')
-    plt.plot(np.rad2deg(angles), dSdt, 'b.', markersize=6, label=r"General derivative")
-    plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(support, angles), 'r.', label='Finite difference')
-    # plt.plot(angles, lowest_z, 'r', label='Lowest y-coordinate')
-    # plt.plot(angles, np.abs(np.sin(angles)*np.cos(angles)), 'r', label='Specific solution')
-    # plt.plot(angles, np.sin(4*angles)/np.abs(2*np.sin(2*angles)), 'k', label='Specific derivative')
-    plt.xlabel('Angle [deg]')
-    plt.ylabel('Magnitude [-]')
-    plt.title('Rotating a square - fixed projection to y=-1')
-    plt.legend()
-    # plt.savefig('out/supportvolume/2D_solution_fixed_proj.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    #### plotting fixed projection
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(np.rad2deg(angles), support_fix, 'g', label='Support area')
+    ax.plot(np.rad2deg(angles), dSdt_fix, 'b', label='Calculated derivative')
+    ax.plot(np.rad2deg(angles), finite_central_differences(support_fix, angles), 'r.', label='Finite differences')
+    ax.set_xlabel('Angle [deg]')
+    ax.set_ylabel(r'Area [mm$^2$]')
+    ax.legend()
+    fig.suptitle('Rotating a square, projection to y=-1')
+    plt.savefig('out/supportvolume/2D/2D_solution_fixed_proj.svg', format='svg')
+
+    ##### comparison between general and specific solution, no projection #####
+    # fig, (ax1, ax2) = plt.subplots(2, 1)
+    # ax1.plot(np.rad2deg(angles), np.abs(np.sin(angles) * np.cos(angles)+1), 'r', label='Specific solution')
+    # ax1.plot(np.rad2deg(angles), support, 'b.', markersize=4, label='General solution')
+    # # ax1.set_xlabel('Angle [deg]')
+    # ax1.set_ylabel(r'Area [mm$^2$]')
+    # ax1.legend()
+    #
+    # # ax2.plot(np.rad2deg(angles), finite_central_differences(support, angles), 'r.', label='Finite differences')
+    # ax2.plot(np.rad2deg(angles), np.sin(4 * angles) / np.abs(2 * np.sin(2 * angles)), 'r', label='Specific solution')
+    # ax2.plot(np.rad2deg(angles), dSdt, 'b.', markersize=6, label=r"General solution")
+    # ax2.set_xlabel('Angle [deg]')
+    # ax2.set_ylabel(r'Area derivative [mm$^2$/deg]')
+    # ax2.legend()
+    #
+    # fig.suptitle('Area below unit square, comparison of general and specific solutions')
+    #
+    # plt.savefig('out/supportvolume/2D/2D_solution_comp_no_proj.svg', format='svg')
+    # fig.show()
+
+    # #### compare general solutions, no projection vs adaptive projection
+    # fig, ax = plt.subplots(1, 1)
+    # ax.plot(np.rad2deg(angles), support, 'r', label='No projection')
+    # ax.plot(np.rad2deg(angles), support_adap, 'b.', label='Projection to lowest point')
+    # ax.legend()
+    # ax.set_xlabel('Angle [deg]')
+    # ax.set_ylabel(r'Area [mm$^2$]')
+    # fig.suptitle('Solution comparison: no projection vs. projection to lowest point')
+    # plt.savefig('out/supportvolume/2D/2D_comp_no_proj_vs_adap_proj.svg', format='svg')
+    # fig.show()
+    #
+    # #### comparison of specific and general solution, projection to y=-1
+    # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+    # ax1.plot(np.rad2deg(angles), support, 'r', label='No projection')
+    # ax1.plot(np.rad2deg(angles), support_fix, 'g', label='Projection to y=-1')
+    # ax1.legend()
+    # ax1.set_ylabel(r'Area [mm$^2$]')
+    #
+    # ax2.plot(np.rad2deg(angles), dSdt, 'r', label='No projection')
+    # ax2.plot(np.rad2deg(angles), dSdt_fix, 'g', label='Projection to y=-1')
+    # ax2.set_ylabel(r'Area derivative [mm$^2$/deg]')
+    # ax2.set_xlabel('Angle [deg]')
+    # ax2.legend()
+    # fig.suptitle('Solution comparison: no projection vs. projection to y=-1')
+    # plt.savefig('out/supportvolume/2D/2D_comp_no_proj_vs_fix_proj.svg', format='svg')
+    # fig.show()
 
     # initial conditions
-    t0 = np.array([np.pi/10])
+    # t0 = np.array([np.pi / 10])
 
-    start = time.time()
-    res_euler = minimize(support_2D, t0, args=(p, f, n, plane), method='BFGS',
-                         jac=True, options={'disp': True})
-    t_euler = time.time() - start
-    print(res_euler)
-    print(f'Execution time: {t_euler}')
+    # start = time.time()
+    # res_euler = minimize(support_2D, t0, args=(p, f, n, plane), method='BFGS',
+    #                      jac=True, options={'disp': True})
+    # t_euler = time.time() - start
+    # print(res_euler)
+    # print(f'Execution time: {t_euler}')
