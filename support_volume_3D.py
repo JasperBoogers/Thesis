@@ -118,49 +118,21 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, func_args) -> tuple[
     # dzda = dRda @ rotate2initial(z_min, R)
     # dzdb = dRdb @ rotate2initial(z_min, R)
 
+    build_dir = np.array([0, 0, 1])
+
     # define z-height of projection plane for fixed projection height
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
-    # extract overhanging faces
-    overhang_idx = np.arange(msh.n_cells)[msh_rot['Normals'][:, 2] < thresh]
+    # extract normal vectors
+    M = msh_rot['Normals'][:, 2] < thresh
 
-    build_dir = np.array([0, 0, 1])
-    volume = 0.0
-    dVda = 0.0
-    dVdb = 0.0
-    for idx in overhang_idx:
+    # calculate projected area and height of each facet
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRda, dRdb, build_dir, z_min, dzda, dzdb)
 
-        # extract points and normal vector from cell
-        cell = msh_rot.extract_cells(idx)
-        points = np.transpose(cell.points)
-        normal = np.transpose(msh_rot['Normals'][idx])
-
-        # normal has to be of unit length for area calculation
-        normal /= np.linalg.norm(normal)
-
-        # compute initial points and normal vector
-        points0 = rotate2initial(points, R)
-        normal0 = msh['Normals'][idx]
-
-        # calculate area and height
-        A = cell.area * -build_dir.dot(normal)
-        h = sum(points[-1]) / 3 - z_min[-1]
-        volume += A * h
-
-        # calculate area derivative
-        dAda = cell.area * -build_dir.dot(dRda @ normal0)
-        dAdb = cell.area * -build_dir.dot(dRdb @ normal0)
-
-        # calculate height derivative
-        dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
-        dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
-
-        # calculate volume derivative and sum
-        dVda_ = A * dhda + h * dAda
-        dVdb_ = A * dhdb + h * dAdb
-        dVda += dVda_
-        dVdb += dVdb_
+    volume = sum(M * A * h)
+    dVda = np.sum(M * A * dhda + M * dAda * h)
+    dVdb = np.sum(M * A * dhdb + M * dAdb * h)
 
     return -volume, [-dVda, -dVdb]
 
@@ -179,51 +151,27 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, func_args) -> tuple[fl
     dzda = dzdb = [0]
 
     build_dir = np.array([0, 0, 1])
-    volume = 0.0
-    dVda = 0.0
-    dVdb = 0.0
-    for idx in range(msh_rot.n_cells):
 
-        # extract points and normal vector from cell
-        cell = msh_rot.extract_cells(idx)
-        points = np.transpose(cell.points)
-        normal = np.transpose(cell.cell_data.active_normals[0])
+    # extract normal vectors
+    normals = msh_rot['Normals']
+    normals0 = msh['Normals']
 
-        # normal has to be of unit length for area calculation
-        normal /= np.linalg.norm(normal)
+    # derivative of normals
+    dnda = np.transpose(dRda @ np.transpose(normals0))
+    dndb = np.transpose(dRdb @ np.transpose(normals0))
 
-        # compute initial points and normal vector
-        points0 = rotate2initial(points, R)
-        normal0 = rotate2initial(normal, R)
+    # calculate smooth heaviside of the normals
+    k = 10
+    M = smooth_heaviside(-1 * normals[:, 2], k, thresh)
+    dMda = M * (1 - M) * 2 * k * -dnda[:, 2]
+    dMdb = M * (1 - M) * 2 * k * -dndb[:, 2]
 
-        # calculate derivative of normal
-        dnda = dRda @ normal0
-        dndb = dRdb @ normal0
+    # calculate projected area and height of each facet
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRda, dRdb, build_dir, z_min, dzda, dzdb)
 
-        # calculate the smooth Heaviside of the normal and its derivative
-        k = 10
-        H = smooth_heaviside(-1 * normal[-1], k, thresh)
-        dHda = H * (1 - H) * 2 * k * -dnda[-1]
-        dHdb = H * (1 - H) * 2 * k * -dndb[-1]
-
-        # calculate area and height
-        A = cell.area * -build_dir.dot(normal)
-        h = sum(points[-1]) / 3 - z_min[-1]
-        volume += H * A * h
-
-        # calculate area derivative
-        dAda = cell.area * -build_dir.dot(dnda)
-        dAdb = cell.area * -build_dir.dot(dndb)
-
-        # calculate height derivative
-        dhda = sum((dRda @ points0)[-1]) / 3 - dzda[-1]
-        dhdb = sum((dRdb @ points0)[-1]) / 3 - dzdb[-1]
-
-        # calculate volume derivative and sum
-        dVda_ = H * A * dhda + H * h * dAda + dHda * A * h
-        dVdb_ = H * A * dhdb + H * h * dAdb + dHdb * A * h
-        dVda += dVda_
-        dVdb += dVdb_
+    volume = sum(M * A * h)
+    dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
+    dVdb = np.sum(M * A * dhdb + M * dAdb * h + dMdb * A * h)
 
     return -volume, [-dVda, -dVdb]
 
@@ -233,7 +181,7 @@ def main_analytic():
     OVERHANG_THRESHOLD = 0
     NUM_START = 1
     GRID = False
-    MAX_ANGLE = 180
+    MAX_ANGLE = np.deg2rad(180)
     # FILE = 'Geometries/cube.stl'
 
     # create mesh and clean
@@ -252,12 +200,13 @@ def main_analytic():
     # da = []
     # db = []
     # for a in angles:
-    #     f_, [da_, db_] = support_volume_smooth([a, 0], mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
+    #     f_, [da_, db_] = support_volume_smooth([a, 0], mesh, [OVERHANG_THRESHOLD, PLANE_OFFSET])
     #     f.append(-f_)
     #     da.append(-da_)
     #     db.append(-db_)
 
-    angles, f, da, db = grid_search_1D(support_volume_smooth, mesh, OVERHANG_THRESHOLD, PLANE_OFFSET, MAX_ANGLE, 201)
+    args = [OVERHANG_THRESHOLD, PLANE_OFFSET]
+    angles, f, da, db = grid_search_1D(support_volume_analytic, mesh, args, MAX_ANGLE, 201)
     f = -f
     da = -da
     db = -db
@@ -265,10 +214,9 @@ def main_analytic():
     _ = plt.plot(np.rad2deg(angles), f, 'g', label='Volume')
     _ = plt.plot(np.rad2deg(angles), da, 'b', label=r'$V_{,\alpha}$')
     _ = plt.plot(np.rad2deg(angles), db, 'k', label=r'$V_{,\beta}$')
-    _ = plt.plot(np.rad2deg(angles)[:-1], finite_forward_differences(f, angles), 'r.', label='Finite differences')
+    _ = plt.plot(np.rad2deg(angles), finite_central_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
-    # plt.ylim([-0.3, 0.3])
-    plt.title(f'3D cube with 60 deg overhang threshold - rotation about x-axis')
+    plt.title(f'3D cube - rotation about x-axis')
     _ = plt.legend()
     # plt.savefig('out/supportvolume/3D_cube_rotx_60deg_smooth.svg', format='svg', bbox_inches='tight')
     plt.show()
