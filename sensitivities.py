@@ -195,12 +195,3 @@ if __name__ == '__main__':
     # plt.show()
     # stop = time.time()
     # print(f'Time taken: {stop - start} seconds')
-
-    m = pv.read('Geometries/chair.stl')
-    m = m.subdivide(2, subfilter='linear')
-    m = prep_mesh(m)
-
-    c = read_connectivity_csv('out/sim_data/chair_connectivity.csv')
-    z = calc_min_projection_distance(m)
-    m = calc_cell_sensitivities(m, np.deg2rad([45, 0]), c, 0, np.array([0, 0, 1]), [0, 0, -z])
-    plot_cell_sensitivities(m, 'MA')
