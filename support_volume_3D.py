@@ -104,8 +104,9 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
     return ax, ay, f
 
 
-def support_volume_analytic(angles: list, msh: pv.PolyData, func_args) -> tuple[float, list]:
-    thresh, plane = func_args
+def support_volume_analytic(angles: list, msh: pv.PolyData, par) -> tuple[float, list]:
+    thresh = par['down_thresh']
+    plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -118,8 +119,6 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, func_args) -> tuple[
     # dzda = dRda @ rotate2initial(z_min, R)
     # dzdb = dRdb @ rotate2initial(z_min, R)
 
-    build_dir = np.array([0, 0, 1])
-
     # define z-height of projection plane for fixed projection height
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
@@ -128,7 +127,7 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, func_args) -> tuple[
     M = msh_rot['Normals'][:, 2] < thresh
 
     # calculate projected area and height of each facet
-    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRda, dRdb, build_dir, z_min, dzda, dzdb)
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRda, dRdb, z_min, dzda, dzdb, par)
 
     volume = sum(M * A * h)
     dVda = np.sum(M * A * dhda + M * dAda * h)
@@ -137,8 +136,10 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, func_args) -> tuple[
     return -volume, [-dVda, -dVdb]
 
 
-def support_volume_smooth(angles: list, msh: pv.PolyData, func_args) -> tuple[float, list]:
-    thresh, plane = func_args
+def support_volume_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
+    thresh = par['down_thresh']
+    plane = par['plane_offset']
+    k_down = par['k_down']
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -150,8 +151,6 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, func_args) -> tuple[fl
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
-    build_dir = np.array([0, 0, 1])
-
     # extract normal vectors
     normals = msh_rot['Normals']
     normals0 = msh['Normals']
@@ -161,13 +160,12 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, func_args) -> tuple[fl
     dndb = np.transpose(dRdb @ np.transpose(normals0))
 
     # calculate smooth heaviside of the normals
-    k = 10
-    M = smooth_heaviside(-1 * normals[:, 2], k, thresh)
-    dMda = M * (1 - M) * 2 * k * -dnda[:, 2]
-    dMdb = M * (1 - M) * 2 * k * -dndb[:, 2]
+    M = smooth_heaviside(-1 * normals[:, 2], k_down, thresh)
+    dMda = M * (1 - M) * 2 * k_down * -dnda[:, 2]
+    dMdb = M * (1 - M) * 2 * k_down * -dndb[:, 2]
 
     # calculate projected area and height of each facet
-    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRda, dRdb, build_dir, z_min, dzda, dzdb)
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRda, dRdb, z_min, dzda, dzdb, par)
 
     volume = sum(M * A * h)
     dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
@@ -178,7 +176,6 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, func_args) -> tuple[fl
 
 def main_analytic():
     # set parameters
-    OVERHANG_THRESHOLD = 0
     NUM_START = 1
     GRID = False
     MAX_ANGLE = np.deg2rad(180)
@@ -192,9 +189,6 @@ def main_analytic():
     cube = pv.Cube()
     mesh = prep_mesh(cube)
 
-    # set fixed projection distance
-    PLANE_OFFSET = calc_min_projection_distance(mesh)
-    #
     # angles = np.linspace(np.deg2rad(-MAX_ANGLE), np.deg2rad(-MAX_ANGLE), 101)
     # f = []
     # da = []
@@ -205,7 +199,15 @@ def main_analytic():
     #     da.append(-da_)
     #     db.append(-db_)
 
-    args = [OVERHANG_THRESHOLD, PLANE_OFFSET]
+    args = {
+        'build_dir': np.array([0, 0, 1]),
+        'down_thresh': 0,
+        'up_thresh': 0,
+        'down_k': 10,
+        'up_k': 10,
+        'plane_offset': calc_min_projection_distance(mesh),
+    }
+
     angles, f, da, db = grid_search_1D(support_volume_analytic, mesh, args, MAX_ANGLE, 201)
     f = -f
     da = -da

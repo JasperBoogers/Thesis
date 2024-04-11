@@ -164,7 +164,9 @@ def extract_top_cover(m, upward):
     return list(top), lines
 
 
-def calc_V_under_triangle(cell, angles, build_dir, z_min):
+def calc_V_under_triangle(cell, angles, z_min, par):
+    build_dir = par['build_dir']
+
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRdx, dRdy = construct_rotation_matrix(angles[0], angles[1])
 
@@ -199,7 +201,9 @@ def calc_V_under_triangle(cell, angles, build_dir, z_min):
     return V, dVdx, dVdy
 
 
-def calc_V_vectorized(mesh, mesh_rot, dRdx, dRdy, build_dir, z_min, dzdx, dzdy):
+def calc_V_vectorized(mesh, mesh_rot, dRdx, dRdy, z_min, dzdx, dzdy, par):
+    build_dir = par['build_dir']
+
     # extract points and normals
     points = np.array([c.points for c in mesh_rot.cell])
     points0 = np.array([c.points for c in mesh.cell])
@@ -354,9 +358,15 @@ def build_top_mask(mesh, upward_ids, top_ids):
     return mask
 
 
-def smooth_top_cover(mesh, upward, build_dir):
-    mask = smooth_heaviside(mesh['Normals'][:, 2], 10, 1e-5)
-    overhang = smooth_heaviside(mesh['Normals'][:, 2], 10, 0.5)
+def smooth_top_cover(mesh, par):
+    build_dir = par['build_dir']
+    down_thresh = par['down_thresh']
+    up_thresh = par['up_thresh']
+    down_k = par['down_k']
+    up_k = par['up_k']
+
+    mask = smooth_heaviside(mesh['Normals'][:, 2], down_k, down_thresh)
+    overhang = smooth_heaviside(mesh['Normals'][:, 2], up_k, up_thresh)
 
     # create rotation matrices for projection rays
     proj_angle = np.deg2rad(5)
@@ -394,12 +404,18 @@ def smooth_top_cover(mesh, upward, build_dir):
     return mask
 
 
-def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb, cast_dir: np.ndarray,
-                    threshold: float, smoothing: int | float) -> tuple:
+def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb, par: dict) -> tuple:
+    build_dir = par['build_dir']
+    down_thresh = par['down_thresh']
+    up_thresh = par['up_thresh']
+    down_k = par['down_k']
+    up_k = par['up_k']
+
+    cast_dir = -build_dir
+
     # construct upward, downward and combined fields
-    k = smoothing
-    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, -threshold)
-    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], k, 0)
+    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], down_k, down_thresh)
+    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], up_k, up_thresh)
     mask = np.zeros_like(Down)
 
     # set up derivative fields
@@ -431,8 +447,8 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
         dndb = dRdb @ normals0
 
         D = Down[idx]
-        dDown_da = D * (1 - D) * 2 * k * -dnda[-1]
-        dDown_db = D * (1 - D) * 2 * k * -dndb[-1]
+        dDown_da = D * (1 - D) * 2 * down_k * -dnda[-1]
+        dDown_db = D * (1 - D) * 2 * down_k * -dndb[-1]
 
         mask[idx] += D
         dmask_da[idx] += dDown_da
@@ -460,8 +476,8 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
                 dnj_da = dRda @ normals0
                 dnj_db = dRdb @ normals0
 
-                dUp_da = U * (1 - U) * 2 * k * dnj_da[-1]
-                dUp_db = U * (1 - U) * 2 * k * dnj_db[-1]
+                dUp_da = U * (1 - U) * 2 * up_k * dnj_da[-1]
+                dUp_db = U * (1 - U) * 2 * up_k * dnj_db[-1]
 
                 dl_da = dRda @ rotate2initial(l, R)
                 dl_db = dRdb @ rotate2initial(l, R)
@@ -472,12 +488,16 @@ def smooth_overhang(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb,
     return mask, dmask_da, dmask_db
 
 
-def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb, cast_dir: np.ndarray,
-                           threshold: float, smoothing: int | float) -> tuple:
+def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb, par) -> tuple:
+    build_dir = par['build_dir']
+    down_thresh = par['down_thresh']
+    up_thresh = par['up_thresh']
+    down_k = par['down_k']
+    up_k = par['up_k']
+
     # construct upward, downward and combined fields
-    k = smoothing
-    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, -threshold)
-    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], k, 0)
+    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], down_k, down_thresh)
+    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], up_k, up_thresh)
     mask = np.zeros_like(Down)
 
     # set up derivative fields
@@ -493,7 +513,7 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
                    [np.sin(np.deg2rad(45)), np.cos(np.deg2rad(45)), 0], [0, 0, 1]])
 
     # hard-code cast dir
-    cast_dir = [0, 0, 1]
+    cast_dir = build_dir
 
     # construct direction vectors for ray tracing
     directs = np.array([cast_dir, Rx @ cast_dir, np.transpose(Rx) @ cast_dir, Ry @ cast_dir,
@@ -512,8 +532,8 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
         dndb = dRdb @ normals0
 
         D = Down[idx]
-        dDown_da = D * (1 - D) * 2 * k * -dnda[-1]
-        dDown_db = D * (1 - D) * 2 * k * -dndb[-1]
+        dDown_da = D * (1 - D) * 2 * down_k * -dnda[-1]
+        dDown_db = D * (1 - D) * 2 * down_k * -dndb[-1]
 
         mask[idx] += D
         dmask_da[idx] += dDown_da
@@ -543,11 +563,11 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
                 dnj_da = dRda @ normals0
                 dnj_db = dRdb @ normals0
 
-                dDj_da = Dj * (1 - Dj) * 2 * k * -dnj_da[-1]
-                dDj_db = Dj * (1 - Dj) * 2 * k * -dnj_db[-1]
+                dDj_da = Dj * (1 - Dj) * 2 * down_k * -dnj_da[-1]
+                dDj_db = Dj * (1 - Dj) * 2 * down_k * -dnj_db[-1]
 
-                dUi_da = Ui * (1 - Ui) * 2 * k * dnda[-1]
-                dUi_db = Ui * (1 - Ui) * 2 * k * dndb[-1]
+                dUi_da = Ui * (1 - Ui) * 2 * up_k * dnda[-1]
+                dUi_db = Ui * (1 - Ui) * 2 * up_k * dndb[-1]
 
                 dl_da = dRda @ rotate2initial(l, R)
                 dl_db = dRdb @ rotate2initial(l, R)
@@ -562,13 +582,17 @@ def smooth_overhang_upward(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda
     return mask, dmask_da, dmask_db
 
 
-def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, connectivity, R, dRda, dRdb,
-                                 cast_dir: np.ndarray, threshold: float, smoothing: int | float) -> tuple:
+def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, dRda, dRdb, par: dict) -> tuple:
+    connectivity = par['connectivity']
+    build_dir = par['build_dir']
+    down_thresh = par['down_thresh']
+    up_thresh = par['up_thresh']
+    down_k = par['down_k']
+    up_k = par['up_k']
 
     # construct upward, downward and combined fields
-    k = smoothing
-    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], k, threshold)
-    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], k, 0)
+    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], down_k, down_thresh)
+    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], up_k, up_thresh)
     mask = np.zeros_like(Down)
 
     # set up derivative fields
@@ -585,12 +609,12 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, c
         dndb = dRdb @ normals0
 
         Di = Down[idx]
-        dDi_da = Di * (1 - Di) * 2 * k * -dnda[-1]
-        dDi_db = Di * (1 - Di) * 2 * k * -dndb[-1]
+        dDi_da = Di * (1 - Di) * 2 * down_k * -dnda[-1]
+        dDi_db = Di * (1 - Di) * 2 * down_k * -dndb[-1]
 
         Ui = Up[idx]
-        dUi_da = Ui * (1 - Ui) * 2 * k * dnda[-1]
-        dUi_db = Ui * (1 - Ui) * 2 * k * dndb[-1]
+        dUi_da = Ui * (1 - Ui) * 2 * up_k * dnda[-1]
+        dUi_db = Ui * (1 - Ui) * 2 * up_k * dndb[-1]
 
         mask[idx] += Di
         dmask_da[idx] += dDi_da
@@ -608,21 +632,21 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, c
 
             Dj = Down[conn]
 
-            mask_val = np.sum(np.dot(cast_dir, l.transpose()) * Dj) * Ui / v
+            mask_val = np.sum(np.dot(-build_dir, l.transpose()) * Dj) * Ui / v
             mask[idx] += mask_val
 
             normals0_ = np.transpose(mesh['Normals'][conn])
             dnj_da = np.transpose(dRda @ normals0_)
             dnj_db = np.transpose(dRdb @ normals0_)
 
-            dDj_da = Dj * (1 - Dj) * 2 * k * -dnj_da[:, -1]
-            dDj_db = Dj * (1 - Dj) * 2 * k * -dnj_db[:, -1]
+            dDj_da = Dj * (1 - Dj) * 2 * down_k * -dnj_da[:, -1]
+            dDj_db = Dj * (1 - Dj) * 2 * down_k * -dnj_db[:, -1]
 
             dl_da = np.transpose(dRda @ rotate2initial(l.transpose(), R))
             dl_db = np.transpose(dRdb @ rotate2initial(l.transpose(), R))
 
-            dm_da_val = np.sum(np.dot(cast_dir, dl_da.transpose()) * Dj * Ui + np.dot(cast_dir, l.transpose()) * dDj_da * Ui + np.dot(cast_dir, l.transpose()) * Dj * dUi_da) / v
-            dm_db_val = np.sum(np.dot(cast_dir, dl_db.transpose()) * Dj * Ui + np.dot(cast_dir, l.transpose()) * dDj_db * Ui + np.dot(cast_dir, l.transpose()) * Dj * dUi_db) / v
+            dm_da_val = np.sum(np.dot(-build_dir, dl_da.transpose()) * Dj * Ui + np.dot(-build_dir, l.transpose()) * dDj_da * Ui + np.dot(-build_dir, l.transpose()) * Dj * dUi_da) / v
+            dm_db_val = np.sum(np.dot(-build_dir, dl_db.transpose()) * Dj * Ui + np.dot(-build_dir, l.transpose()) * dDj_db * Ui + np.dot(-build_dir, l.transpose()) * Dj * dUi_db) / v
 
             dmask_da[idx] += dm_da_val
             dmask_db[idx] += dm_db_val

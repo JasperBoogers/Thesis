@@ -7,8 +7,8 @@ from SoP import SoP_top_cover
 from scipy.optimize import minimize
 
 
-def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]:
-    connectivity, threshold, plane = func_args
+def SoP_smooth(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
+    plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
     Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -17,7 +17,6 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]
     mesh_rot = rotate_mesh(mesh, R)
 
     # define z-height of projection plane for fixed projection height
-    build_dir = np.array([0, 0, 1])
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
@@ -30,10 +29,9 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, func_args) -> tuple[float, list]
     mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
 
     # compute overhang mask
-    k = 10
-    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, connectivity, R, dRda, dRdb, -build_dir, threshold, k)
+    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, R, dRda, dRdb, par)
 
-    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, build_dir, z_min, dzda, dzdb)
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, z_min, dzda, dzdb, par)
 
     volume = sum(M * A * h)
     dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
@@ -98,8 +96,16 @@ if __name__ == '__main__':
 
     assert len(conn) == m.n_cells
 
-    args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
+    args = {
+        'connectivity': conn,
+        'build_dir': np.array([0, 0, 1]),
+        'down_thresh': OVERHANG_THRESHOLD,
+        'up_thresh': 0,
+        'down_k': 10,
+        'up_k': 10,
+        'plane_offset': PLANE_OFFSET,
 
+    }
     # ang = np.deg2rad([0, -90, -40])
     # f = []
     # da = []

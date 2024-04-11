@@ -4,7 +4,9 @@ import numpy as np
 from helpers import *
 
 
-def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -> tuple[float, list]:
+def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
+    thresh = par['down_thresh']
+    plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRdx, dRdy = construct_rotation_matrix(angles[0], angles[1])
@@ -26,7 +28,7 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -
     volume = 0.0
     dVda = 0.0
     dVdb = 0.0
-    for idx in top_idx:
+    for idx in top_idx:  # TODO convert to calc_V_vectorized
 
         # extract points and normal vector from cell
         cell = msh_rot.extract_cells(idx)
@@ -38,7 +40,12 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, thresh: float, plane: float) -
     return -(volume - msh_rot.volume), [-dVda, -dVdb]
 
 
-def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) -> tuple[float, list]:
+def SoP_top_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
+    thresh = par['down_thresh']
+    plane = par['plane_offset']
+    build_dir = par['build_dir']
+    down_k = par['down_k']
+
     # extract angles, construct rotation matrices for x and y rotations
     Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
 
@@ -46,7 +53,6 @@ def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) 
     msh_rot = rotate_mesh(msh, R)
 
     # define z-height of projection plane for fixed projection height
-    build_dir = np.array([0, 0, 1])
     z_min = np.array([0, 0, -plane])
     dzda = dzdb = [0]
 
@@ -56,13 +62,13 @@ def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) 
     # extract upward facing facets
     upward_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] > thresh]
     top_idx, _ = extract_top_cover(msh_rot, upward_idx)
-    top = smooth_top_cover(msh_rot, upward_idx, build_dir)
+    top = smooth_top_cover(msh_rot, par)
 
     volume = 0.0
     dVda = 0.0
     dVdb = 0.0
 
-    for idx in range(msh_rot.n_cells):
+    for idx in range(msh_rot.n_cells):  # TODO convert to vectorized
         # extract points and normal vector from cell
         cell = msh_rot.extract_cells(idx)
         points = np.transpose(cell.points)
@@ -80,10 +86,9 @@ def SoP_top_smooth(angles: list, msh: pv.PolyData, thresh: float, plane: float) 
         dndb = dRdb @ normal0
 
         # calculate the smooth Heaviside of the normal and its derivative
-        k = 10
         H = top[idx]
-        dHda = H * (1 - H) * -2 * k * dnda[-1]
-        dHdb = H * (1 - H) * -2 * k * dndb[-1]
+        dHda = H * (1 - H) * -2 * down_k * dnda[-1]
+        dHdb = H * (1 - H) * -2 * down_k * dndb[-1]
 
         # calculate area and height
         A = cell.area * build_dir.dot(normal)
@@ -197,7 +202,6 @@ def SoP_naive_correction(angles: list, msh: pv.PolyData, thresh: float, plane: f
 if __name__ == '__main__':
 
     # load file and rotate
-    OVERHANG_THRESHOLD = 1e-5
     FILE = 'Geometries/cube_cutout.stl'
 
     m = pv.read(FILE)
@@ -206,8 +210,17 @@ if __name__ == '__main__':
     m = m.subdivide(2, subfilter='linear')
 
     # set fixed projection distance
-    PLANE_OFFSET = calc_min_projection_distance(m)
     start = time.time()
+
+    args = {
+        'build_dir': np.array([0, 0, 1]),
+        'down_thresh': 1e-5,
+        'up_thresh': 0,
+        'down_k': 10,
+        'up_k': 10,
+        'plane_offset': calc_min_projection_distance(m),
+    }
+
     # ang = np.linspace(np.deg2rad(-45), np.deg2rad(0), 101)
     # ang = np.deg2rad([-41, -40, -39])
     # f = []
@@ -222,12 +235,12 @@ if __name__ == '__main__':
 
     a = np.deg2rad(180)
     step = 201
-    ang, f, da, db = grid_search_1D(SoP_top_smooth, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+    ang, f, da, db = grid_search_1D(SoP_top_smooth, m, args, a, step, 'x')
     f = -f
     da = -da
     db = -db
 
-    # ax, ay, f = grid_search(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, np.deg2rad(180), 20)
+    # ax, ay, f = grid_search(SoP_top_cover, m, args, np.deg2rad(180), 20)
 
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
     _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
@@ -240,7 +253,7 @@ if __name__ == '__main__':
     plt.savefig('out/supportvolume/SoP_cube_rotx_smooth_top.svg', format='svg', bbox_inches='tight')
     plt.show()
     #
-    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, OVERHANG_THRESHOLD, PLANE_OFFSET, a, step, 'x')
+    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
 
     _ = plt.figure()
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
