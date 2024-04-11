@@ -88,8 +88,8 @@ if __name__ == '__main__':
     # overhang_mask_gif(m, 'out/supportvolume/SoP/OverhangMask4_averaged.gif')
 
     # set parameters
-    thresh = 90
-    OVERHANG_THRESHOLD = np.cos(np.deg2rad(thresh))  # angle between negative build direction and facet normal
+    thresh = 0
+    OVERHANG_THRESHOLD = np.sin(np.deg2rad(thresh))  # angle between build plane and facet normal
     PLANE_OFFSET = calc_min_projection_distance(m)
     print('Generating connectivity')
     # conn = generate_connectivity_obb(m)
