@@ -4,7 +4,7 @@ import pyvista as pv
 import matplotlib.pyplot as plt
 from helpers import *
 from io_helpers import read_connectivity_csv
-from SoP_threshold import SoP_smooth
+from SoP_threshold import SoP_connectivity
 from support_volume_3D import support_volume_smooth, support_volume_analytic
 from support_volume_2D import support_2D
 from joblib import delayed, Parallel

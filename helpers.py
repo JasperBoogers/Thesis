@@ -227,6 +227,22 @@ def calc_V_vectorized(mesh, mesh_rot, dRdx, dRdy, z_min, dzdx, dzdy, par):
     return area, dAdx, dAdy, height, dhdx, dhdy
 
 
+def calc_V_vect_no_deriv(mesh, z_min, par):
+    build_dir = par['build_dir']
+
+    # extract points and normals
+    points = np.array([c.points for c in mesh.cell])
+    normals = mesh['Normals']
+
+    # compute area and derivative
+    area = mesh['Area'] * np.dot(-build_dir, np.transpose(normals))
+
+    # compute height and derivative
+    height = np.sum(points[:, :, -1], axis=1) / 3 - z_min[-1]
+
+    return area, height
+
+
 def extract_correction_idx(mesh, overhang_idx):
     # set bounds
     bounds = mesh.bounds
@@ -652,6 +668,47 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
             dmask_db[idx] += dm_db_val
 
     return mask, dmask_da, dmask_db
+
+
+def smooth_overhang_connectivity_no_deriv(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R, par: dict) -> np.ndarray:
+    connectivity = par['connectivity']
+    build_dir = par['build_dir']
+    down_thresh = par['down_thresh']
+    up_thresh = par['up_thresh']
+    down_k = par['down_k']
+    up_k = par['up_k']
+
+    # construct upward, downward and combined fields
+    Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], down_k, down_thresh)
+    Up = smooth_heaviside(rotated_mesh['Normals'][:, 2], up_k, up_thresh)
+    mask = np.zeros_like(Down)
+
+    # loop over cells and subtract value to compensate for overhangs
+    for idx in range(rotated_mesh.n_cells):
+        # extract points and normal vector from cell
+        cell = rotated_mesh.extract_cells(idx)
+
+        Di = Down[idx]
+        Ui = Up[idx]
+
+        mask[idx] += Di
+
+        # loop over connected cells and add support on part contribution
+        center = cell['Center'][0]
+        conn = connectivity[idx]
+        v = len(conn)
+
+        if v > 0:
+            c = rotated_mesh.extract_cells(conn)['Center']
+            l = np.subtract(center, c)
+            l = l / np.linalg.norm(l, axis=1)[:, None]
+
+            Dj = Down[conn]
+
+            mask_val = np.sum(np.dot(-build_dir, l.transpose()) * Dj) * Ui / v
+            mask[idx] += mask_val
+
+    return mask
 
 
 def generate_connectivity(mesh):

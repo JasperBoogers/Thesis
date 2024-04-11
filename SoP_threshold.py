@@ -3,7 +3,7 @@ import time
 import pyvista as pv
 import numpy as np
 from helpers import *
-from SoP import SoP_top_cover, SoP_smooth
+from SoP import SoP_top_cover, SoP_connectivity
 from scipy.optimize import minimize
 
 if __name__ == '__main__':
@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
     step = 201
     axis='x'
-    ang, f, da, db = grid_search_1D(SoP_smooth, m, args, a, step, axis)
+    ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, axis)
 
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
     _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')

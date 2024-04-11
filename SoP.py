@@ -233,7 +233,7 @@ def smooth_overhang_mask_gif(mesh, filename):
     p.close()
 
 
-def SoP_smooth(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
+def SoP_connectivity(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
     plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
@@ -264,6 +264,36 @@ def SoP_smooth(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
     dVdb = np.sum(M * A * dhdb + M * dAdb * h + dMdb * A * h)
 
     return volume, [dVda, dVdb]
+
+
+def SoP_connectivity_no_deriv(angles: list, mesh: pv. PolyData, par) -> float:
+    plane = par['plane_offset']
+
+    # extract angles, construct rotation matrices for x and y rotations
+    _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
+
+    # rotate mesh
+    mesh_rot = rotate_mesh(mesh, R)
+
+    # define z-height of projection plane for fixed projection height
+    z_min = np.array([0, 0, -plane])
+
+    # uncomment for adaptive projection height
+    # z_min = mesh_rot.points[np.argmin(mesh_rot.points[:, -1]), :]
+    # dzda = dRda @ rotate2initial(z_min, R)
+    # dzdb = dRdb @ rotate2initial(z_min, R)
+
+    # compute average coordinate for each cell, and store in 'Center' array
+    mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
+
+    # compute overhang mask
+    M = smooth_overhang_connectivity_no_deriv(mesh, mesh_rot, R, par)
+
+    A, h = calc_V_vect_no_deriv(mesh_rot, z_min, par)
+
+    volume = sum(M * A * h)
+
+    return volume
 
 
 if __name__ == '__main__':
