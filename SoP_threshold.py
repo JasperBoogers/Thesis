@@ -3,76 +3,8 @@ import time
 import pyvista as pv
 import numpy as np
 from helpers import *
-from SoP import SoP_top_cover
+from SoP import SoP_top_cover, SoP_smooth
 from scipy.optimize import minimize
-
-
-def SoP_smooth(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
-    plane = par['plane_offset']
-
-    # extract angles, construct rotation matrices for x and y rotations
-    Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
-
-    # rotate mesh
-    mesh_rot = rotate_mesh(mesh, R)
-
-    # define z-height of projection plane for fixed projection height
-    z_min = np.array([0, 0, -plane])
-    dzda = dzdb = [0]
-
-    # uncomment for adaptive projection height
-    # z_min = mesh_rot.points[np.argmin(mesh_rot.points[:, -1]), :]
-    # dzda = dRda @ rotate2initial(z_min, R)
-    # dzdb = dRdb @ rotate2initial(z_min, R)
-
-    # compute average coordinate for each cell, and store in 'Center' array
-    mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
-
-    # compute overhang mask
-    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, R, dRda, dRdb, par)
-
-    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, z_min, dzda, dzdb, par)
-
-    volume = sum(M * A * h)
-    dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
-    dVdb = np.sum(M * A * dhdb + M * dAdb * h + dMdb * A * h)
-
-    return volume, [dVda, dVdb]
-
-
-def overhang_mask_gif(mesh, filename):
-    p = pv.Plotter(off_screen=True, notebook=False)
-    p.add_axes()
-    p.add_mesh(mesh, name='mesh', lighting=False,
-               scalar_bar_args={"title": "Overhang value"}, clim=[-2, 1], cmap='brg', show_edges=True)
-    p.show(interactive_update=True)
-
-    p.open_gif(filename)
-    n_frames = 120
-    angles = np.deg2rad(np.linspace(180, 0, n_frames))
-    for f in range(n_frames):
-        # extract angles, construct rotation matrices for x and y rotations
-        Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[f], 0)
-
-        # rotate mesh
-        mesh_rot = rotate_mesh(mesh, R)
-
-        build_dir = np.array([0, 0, -1])
-
-        # compute average coordinate for each cell, and store in 'Center' array
-        mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
-
-        # compute overhang mask
-        k = 10
-        overhang = smooth_overhang(mesh_rot, build_dir, 1e-5, k)
-        p.add_mesh(mesh_rot, scalars=overhang, name='mesh', lighting=False,
-                   scalar_bar_args={"title": "Overhang value"}, clim=[-2, 1], cmap='brg', show_edges=True)
-        p.update()
-        p.write_frame()
-        print(f'Writing frame for angle: {np.rad2deg(angles[f])} degrees')
-
-    p.close()
-
 
 if __name__ == '__main__':
     start = time.time()
@@ -104,7 +36,6 @@ if __name__ == '__main__':
         'down_k': 10,
         'up_k': 10,
         'plane_offset': PLANE_OFFSET,
-
     }
     # ang = np.deg2rad([0, -90, -40])
     # f = []
