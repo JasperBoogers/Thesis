@@ -57,3 +57,13 @@ def write_csv(data, filename):
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(data)
+
+
+def write_line_search_csv(parname, pars, fun, deriv, filename):
+    with open(filename, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([parname] + pars)
+        writer.writerow(['Functions'])
+        writer.writerows(fun)
+        writer.writerow(['Derivatives'])
+        writer.writerows(deriv)
