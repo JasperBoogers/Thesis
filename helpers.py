@@ -105,6 +105,20 @@ def make_contour_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray, titel=None, s
     plt.show()
 
 
+def make_line_plot(x, f, df, gradient=True, titel=None, save=None):
+    fig, ax = plt.figure()
+    ax.plot(x, f, 'g', label='Volume')
+    ax.plot(x, df, 'b', label='Gradient')
+    if gradient:
+        ax.plot(x, finite_central_differences(f, np.deg2rad(x)), 'r.', label='Finite differences')
+    ax.set_xlabel('Angle [deg]')
+    if titel is not None:
+        fig.suptitle(titel)
+    if save is not None:
+        plt.savefig(save, format='svg')
+
+    plt.show()
+
 def calc_min_projection_distance(m: pv.PolyData | pv.DataSet) -> float:
     bounds = m.bounds
     x = bounds[1] - bounds[0]
@@ -605,6 +619,7 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
     up_thresh = par['up_thresh']
     down_k = par['down_k']
     up_k = par['up_k']
+    penalty = par['SoP_penalty']
 
     # construct upward, downward and combined fields
     Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], down_k, down_thresh)
@@ -639,7 +654,7 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
         # loop over connected cells and add support on part contribution
         center = cell['Center'][0]
         conn = connectivity[idx]
-        v = len(conn)
+        v = len(conn)/penalty
 
         if v > 0:
             c = rotated_mesh.extract_cells(conn)['Center']
