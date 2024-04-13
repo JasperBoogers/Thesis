@@ -4,7 +4,6 @@ import pyvista as pv
 import matplotlib.pyplot as plt
 from helpers import *
 from io_helpers import read_connectivity_csv
-from SoP_threshold import SoP_connectivity
 from support_volume_3D import support_volume_smooth, support_volume_analytic
 from support_volume_2D import support_2D
 from joblib import delayed, Parallel
@@ -82,20 +81,22 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
     plt.show()
 
 
-def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray, connectivity,
-                            threshold, build_dir: list | np.ndarray, z_min: list | np.ndarray):
+def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray, par):
+    z_min = [0, 0, -par['plane_offset']]
+
     _, _, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
     mesh_rot = rotate_mesh(mesh, R)
 
     # compute average coordinate for each cell, and store in 'Center' array
     mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
 
-    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, connectivity, R, dRda, dRdb, -build_dir, threshold, 10)
+    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, R, dRda, dRdb, par)
 
     # compute sensitivities for all cells
-    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, build_dir, z_min, [0], [0])
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, z_min, [0], [0], par)
 
     mesh_rot.cell_data['MA'] = M*A/mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['M'] = M/mesh_rot.cell_data['Area']
     mesh_rot.cell_data['V'] = (M * A * h)/mesh_rot.cell_data['Area']
     mesh_rot.cell_data['dVda'] = (M * A * dhda + M * dAda * h + dMda * A * h)/mesh_rot.cell_data['Area']
     mesh_rot.cell_data['dVdb'] = (M * A * dhdb + M * dAdb * h + dMdb * A * h)/mesh_rot.cell_data['Area']

@@ -2,6 +2,7 @@ import time
 import pyvista as pv
 import numpy as np
 from helpers import *
+from sensitivities import calc_cell_sensitivities, plot_cell_sensitivities
 
 
 def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
@@ -299,12 +300,12 @@ def SoP_connectivity_no_deriv(angles: list, mesh: pv. PolyData, par) -> float:
 if __name__ == '__main__':
 
     # load file and rotate
-    FILE = 'Geometries/cube_cutout.stl'
+    FILE = 'Geometries/bunny/bunny_coarse.stl'
 
     m = pv.read(FILE)
     # m = pv.Cube()
-    m = prep_mesh(m, decimation=0)
     m = m.subdivide(2, subfilter='linear')
+    m = prep_mesh(m, decimation=0)
 
     # set fixed projection distance
     start = time.time()
@@ -320,11 +321,15 @@ if __name__ == '__main__':
         'connectivity': conn,
         'build_dir': np.array([0, 0, 1]),
         'down_thresh': np.sin(np.deg2rad(0)),
-        'up_thresh': 0,
+        'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
         'up_k': 10,
         'plane_offset': calc_min_projection_distance(m),
+        'SoP_penalty': 1
     }
+
+    m = calc_cell_sensitivities(m, np.deg2rad([60, 0]), args)
+    plot_cell_sensitivities(m, 'MA')
 
     # ang = np.linspace(np.deg2rad(-45), np.deg2rad(0), 101)
     # ang = np.deg2rad([-41, -40, -39])
@@ -338,38 +343,39 @@ if __name__ == '__main__':
     #     da.append(-da_)
     #     db.append(-db_)
 
-    a = np.deg2rad(180)
-    step = 201
-    ang, f, da, db = grid_search_1D(SoP_top_smooth, m, args, a, step, 'x')
-    f = -f
-    da = -da
-    db = -db
 
-    # ax, ay, f = grid_search(SoP_top_cover, m, args, np.deg2rad(180), 20)
-
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
-    plt.xlabel('Angle [deg]')
-    plt.ylim([-2, 2])
-    plt.title(f'Cube with cutout - rotation about x-axis, Smoothened')
-    _ = plt.legend()
-    plt.savefig('out/supportvolume/SoP_cube_rotx_smooth_top.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    # a = np.deg2rad(180)
+    # step = 201
+    # ang, f, da, db = grid_search_1D(SoP_top_smooth, m, args, a, step, 'x')
+    # f = -f
+    # da = -da
+    # db = -db
     #
-    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
-
-    _ = plt.figure()
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
-    _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
-    plt.xlabel('Angle [deg]')
-    plt.ylabel(fr'Volume [mm$^3$]')
+    # # ax, ay, f = grid_search(SoP_top_cover, m, args, np.deg2rad(180), 20)
+    #
+    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
+    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    # _ = plt.plot(np.rad2deg(ang)[:-1], finite_forward_differences(f, ang), 'r.', label='Finite differences')
+    # plt.xlabel('Angle [deg]')
     # plt.ylim([-2, 2])
-    plt.title('Comparison of smoothing on cube with cutout')
-    plt.legend()
-    plt.savefig('out/supportvolume/SoP_cube_smooth_comp_x.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    # plt.title(f'Cube with cutout - rotation about x-axis, Smoothened')
+    # _ = plt.legend()
+    # plt.savefig('out/supportvolume/SoP_cube_rotx_smooth_top.svg', format='svg', bbox_inches='tight')
+    # plt.show()
+    # #
+    # ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
+    #
+    # _ = plt.figure()
+    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
+    # _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
+    # plt.xlabel('Angle [deg]')
+    # plt.ylabel(fr'Volume [mm$^3$]')
+    # # plt.ylim([-2, 2])
+    # plt.title('Comparison of smoothing on cube with cutout')
+    # plt.legend()
+    # plt.savefig('out/supportvolume/SoP_cube_smooth_comp_x.svg', format='svg', bbox_inches='tight')
+    # plt.show()
 
     end = time.time()
     print(f'Finished in {end-start} seconds')

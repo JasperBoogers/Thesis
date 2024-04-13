@@ -101,7 +101,7 @@ def make_contour_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray, titel=None, s
     if titel is not None:
         plt.title(titel)
     if save is not None:
-        plt.savefig(save, format='svg', bbox_inches='tight')
+        plt.savefig(save, format='svg')
     plt.show()
 
 
@@ -654,7 +654,7 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
         # loop over connected cells and add support on part contribution
         center = cell['Center'][0]
         conn = connectivity[idx]
-        v = len(conn)/penalty
+        v = len(conn)*penalty
 
         if v > 0:
             c = rotated_mesh.extract_cells(conn)['Center']
