@@ -82,10 +82,23 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
 
 
 def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray, par):
-    z_min = [0, 0, -par['plane_offset']]
+    plane = par['plane_offset']
 
     _, _, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
     mesh_rot = rotate_mesh(mesh, R)
+
+    # define z-height of projection plane for adaptive projection: lowest z-coordinate, closest to origin (xy norm)
+    if plane <= 0:
+        z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
+        norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
+        min_norm_idx = np.argmin(norm)
+        z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
+        dzda = dRda @ rotate2initial(z_min, R)
+        dzdb = dRdb @ rotate2initial(z_min, R)
+    else:  # fixed projection height
+        z_min = np.array([0, 0, -plane])
+        dzda = [0]
+        dzdb = [0]
 
     # compute average coordinate for each cell, and store in 'Center' array
     mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
@@ -93,7 +106,7 @@ def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.nd
     M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, R, dRda, dRdb, par)
 
     # compute sensitivities for all cells
-    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, z_min, [0], [0], par)
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, z_min, dzda, dzdb, par)
 
     mesh_rot.cell_data['MA'] = M*A/mesh_rot.cell_data['Area']
     mesh_rot.cell_data['M'] = M/mesh_rot.cell_data['Area']
@@ -138,16 +151,26 @@ def func32(angles, m, arg):
 if __name__ == '__main__':
     start = time.time()
     #
-    # # load file
-    # FILE = 'Geometries/cube_cutout.stl'
-    # m = pv.read(FILE)
-    # m = prep_mesh(m, decimation=0)
+    # load file
+    FILE = 'Geometries/bunny/bunny_coarse.stl'
+    m = pv.read(FILE)
     # m = m.subdivide(2, subfilter='linear')
-    #
-    # # set parameters
-    # OVERHANG_THRESHOLD = -1e-5
-    # PLANE_OFFSET = calc_min_projection_distance(m)
-    # conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    m = prep_mesh(m, decimation=0)
+    connectivity = read_connectivity_csv('out/sim_data/bunny_coarse_connectivity.csv')
+
+    par = {
+        'connectivity': connectivity,
+        'build_dir': np.array([0, 0, 1]),
+        'down_thresh': np.sin(np.deg2rad(45)),
+        'up_thresh': np.sin(np.deg2rad(0)),
+        'down_k': 10,
+        'up_k': 20,
+        'plane_offset': calc_min_projection_distance(m),
+        # 'plane_offset': -1,
+        'SoP_penalty': 1
+    }
+
+    m = calc_cell_sensitivities(m, [3.32341069, -4.07440287], par)
     # steps = np.logspace(-10, 0, 10)
     #
     # x = np.deg2rad([50, 10])
