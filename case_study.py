@@ -181,16 +181,12 @@ def case_study_optimizers(mesh, par, methods, n_start, savename):
     logging.debug('Perform grid search')
     steps = 21
     max_angle = np.deg2rad(180)
-    ax = np.linspace(-max_angle, max_angle, steps)
-    ay = np.linspace(-max_angle, max_angle, steps)
     grid_start = time.time()
-    f = Parallel(n_jobs=cpu_count())(delayed(SoP_connectivity_no_deriv)([x, y], mesh, fun_arg) for x in ax for y in ay)
+    ax, ay, f = grid_search_no_deriv(SoP_connectivity_no_deriv, mesh, fun_arg, max_angle, steps)
     grid_end = time.time()
     logging.debug(f'Grid search finished in {grid_end-grid_start} seconds')
 
-    # reshape f and save
-    f = np.reshape(f, (len(ax), len(ay)))
-    f = np.transpose(f)
+    # save
     logging.debug('Save grid search to csv')
     write_csv(f, f'{savename}_grid_search.csv')
 
@@ -331,15 +327,7 @@ def case_study():
     console.setLevel(logging.INFO)
     logging.getLogger('').addHandler(console)
 
-    # load case study table
     logging.info(f'Start of case study {GEOM}')
-    # logging.info(f'Load input file {INPUTFILE}')
-    # df = pd.read_excel(INPUTFILE)
-    # df['x_min'] = df['x_min'].astype('object')
-    # df['opt time'] = df['opt time'].astype('object')
-    # df['f_min'] = df['x_min'].astype('object')
-    # df['# eval'] = df['# eval'].astype('object')
-    # df['Jac'] = df['Jac'].astype('object')
 
     # set parameters
     par = {
@@ -350,6 +338,7 @@ def case_study():
         'down_k': 10,
         'up_k': 20,
         'plane_offset': calc_min_projection_distance(mesh),
+        # 'plane_offset': -1,
         'SoP_penalty': 1
     }
     smoothing_range = [5, 10, 15, 20, 25]
@@ -371,6 +360,9 @@ def case_study():
     case_study_up_thresh(mesh, par, up_range, OUTNAME)
 
     logging.info(f'{"#" * 10} Processing {CASENAME} - comparing optimizers {"#" * 10}')
+
+    par['down_thresh'] = np.sin(np.deg2rad(45))
+
     logging.info(f'Using gradient based methods')
     case_study_optimizers(mesh, par, opt_methods, NUM_START, OUTNAME)
     logging.info(f'Using GA')

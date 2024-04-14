@@ -298,7 +298,8 @@ def extract_correction_idx(mesh, overhang_idx):
 
 def grid_search(fun, mesh, args, max_angle, angle_step):
     # grid search parameters
-    ax = ay = np.linspace(-max_angle, max_angle, angle_step)
+    ax = np.linspace(-max_angle, max_angle, angle_step)
+    ay = np.linspace(-max_angle, max_angle, angle_step)
     # f = np.zeros((ax.shape[0], ay.shape[0]))
     #
     # for i, x in enumerate(ax):
@@ -318,6 +319,16 @@ def grid_search(fun, mesh, args, max_angle, angle_step):
     dy = np.transpose(dy)
 
     return ax, ay, f, dx, dy
+
+
+def grid_search_no_deriv(fun, mesh, args, max_angle, angle_step):
+    ax = np.linspace(-max_angle, max_angle, angle_step)
+    ay = np.linspace(-max_angle, max_angle, angle_step)
+
+    f = Parallel(n_jobs=cpu_count())(delayed(fun)([x, y], mesh, args) for x in ax for y in ay)
+    f = np.reshape(f, (len(ax), len(ay)))
+    f = np.transpose(f)
+    return ax, ay, f
 
 
 def grid_search_1D(fun, mesh, func_args, max_angle, angle_step, dim='x'):
