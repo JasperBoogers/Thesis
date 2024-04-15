@@ -139,7 +139,7 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, par) -> tuple[float,
 def support_volume_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
     thresh = par['down_thresh']
     plane = par['plane_offset']
-    k_down = par['k_down']
+    k_down = par['down_k']
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -147,9 +147,9 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[fl
     # rotate mesh
     msh_rot = rotate_mesh(msh, R)
 
-    # define z-height of projection plane for fixed projection height
-    z_min = np.array([0, 0, -plane])
-    dzda = dzdb = [0]
+    z_min, dz_min = mellow_min(msh_rot.points, -80)
+    dzda = np.sum(dz_min * np.transpose(dRda @ np.transpose(msh.points)), axis=0)
+    dzdb = np.sum(dz_min * np.transpose(dRdb @ np.transpose(msh.points)), axis=0)
 
     # extract normal vectors
     normals = msh_rot['Normals']
@@ -171,7 +171,7 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[fl
     dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
     dVdb = np.sum(M * A * dhdb + M * dAdb * h + dMdb * A * h)
 
-    return -volume, [-dVda, -dVdb]
+    return volume, [dVda, dVdb]
 
 
 def main_analytic():
@@ -186,41 +186,50 @@ def main_analytic():
     # mesh = prep_mesh(mesh)
     # points = np.array([[-1 / 2, -np.sqrt(3) / 6, 0], [1 / 2, -np.sqrt(3) / 6, 0], [0, np.sqrt(3) / 3, 0]])
     # mesh = prep_mesh(pv.Triangle(points), flip=True)  # flip normal to ensure downward facing
-    cube = pv.Cube()
-    mesh = prep_mesh(cube)
+    mesh = pv.Cube()
+    mesh = prep_mesh(mesh, decimation=0)
+    mesh = mesh.subdivide(2, 'linear')
+    mesh = prep_mesh(mesh, decimation=0)
+
+    args = {
+        'build_dir': np.array([0, 0, 1]),
+        'down_thresh': np.sin(np.deg2rad(0)),
+        'up_thresh': np.sin(np.deg2rad(0)),
+        'down_k': 10,
+        'up_k': 10,
+        'plane_offset': calc_min_projection_distance(mesh),
+        'SoP_penalty': 1
+    }
 
     # angles = np.linspace(np.deg2rad(-MAX_ANGLE), np.deg2rad(-MAX_ANGLE), 101)
     # f = []
     # da = []
     # db = []
     # for a in angles:
-    #     f_, [da_, db_] = support_volume_smooth([a, 0], mesh, [OVERHANG_THRESHOLD, PLANE_OFFSET])
+    #     f_, [da_, db_] = support_volume_smooth([a, 0], mesh, args)
     #     f.append(-f_)
     #     da.append(-da_)
     #     db.append(-db_)
 
-    args = {
-        'build_dir': np.array([0, 0, 1]),
-        'down_thresh': 0,
-        'up_thresh': 0,
-        'down_k': 10,
-        'up_k': 10,
-        'plane_offset': calc_min_projection_distance(mesh),
-    }
+    angles, f, da, db = grid_search_1D(support_volume_smooth, mesh, args, MAX_ANGLE, 201)
 
-    angles, f, da, db = grid_search_1D(support_volume_analytic, mesh, args, MAX_ANGLE, 201)
-    f = -f
-    da = -da
-    db = -db
+    # args['plane_offset'] = 0
+    #
+    # a2, f2, da2, db2 = grid_search_1D(support_volume_smooth, mesh, args, MAX_ANGLE, 201)
+    #
+    # args['plane_offset'] = -1
+    #
+    # a3, f3, da3, db3 = grid_search_1D(support_volume_smooth, mesh, args, MAX_ANGLE, 201)
 
     _ = plt.plot(np.rad2deg(angles), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(angles), da, 'b', label=r'$V_{,\alpha}$')
-    _ = plt.plot(np.rad2deg(angles), db, 'k', label=r'$V_{,\beta}$')
+    _ = plt.plot(np.rad2deg(angles), da, 'b', label=r'dVda')
+    _ = plt.plot(np.rad2deg(angles), db, 'k', label=r'dVdb')
     _ = plt.plot(np.rad2deg(angles), finite_central_differences(f, angles), 'r.', label='Finite differences')
     plt.xlabel('Angle [deg]')
-    plt.title(f'3D cube - rotation about x-axis')
+    plt.ylabel(r'Volume [mm$^3$]')
+    plt.title(f'3D cube - Comparison of projection method')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/3D_cube_rotx_60deg_smooth.svg', format='svg', bbox_inches='tight')
+    # plt.savefig('out/supportvolume/3D_cube_rotx_projection_comp.svg', format='svg')
     plt.show()
 
     # perform grid search

@@ -246,17 +246,21 @@ def SoP_connectivity(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]
     mesh_rot = rotate_mesh(mesh, R)
 
     # define z-height of projection plane for adaptive projection: lowest z-coordinate, closest to origin (xy norm)
-    if plane <= 0:
-        z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
-        norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
-        min_norm_idx = np.argmin(norm)
-        z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
-        dzda = dRda @ rotate2initial(z_min, R)
-        dzdb = dRdb @ rotate2initial(z_min, R)
-    else:  # fixed projection height
-        z_min = np.array([0, 0, -plane])
-        dzda = [0]
-        dzdb = [0]
+    # if plane <= 0:
+    #     z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
+    #     norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
+    #     min_norm_idx = np.argmin(norm)
+    #     z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
+    #     dzda = dRda @ rotate2initial(z_min, R)
+    #     dzdb = dRdb @ rotate2initial(z_min, R)
+    # else:  # fixed projection height
+    #     z_min = np.array([0, 0, -plane])
+    #     dzda = [0]
+    #     dzdb = [0]
+
+    z_min, dz_min = mellow_min(mesh_rot.points, -80)
+    dzda = np.sum(dz_min * np.transpose(dRda @ np.transpose(mesh.points)), axis=0)
+    dzdb = np.sum(dz_min * np.transpose(dRdb @ np.transpose(mesh.points)), axis=0)
 
     # compute average coordinate for each cell, and store in 'Center' array
     mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
@@ -356,7 +360,7 @@ if __name__ == '__main__':
     a = np.deg2rad(180)
     step = 201
 
-    ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'x')
+    ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'y')
 
     # ang2, f2, da2, db2 = grid_search_1D(SoP_top_smooth, m, args, a, step, 'x')
     #
