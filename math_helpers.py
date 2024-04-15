@@ -51,3 +51,11 @@ def construct_rotation_matrix(a, b) -> tuple[np.ndarray, np.ndarray, np.ndarray,
 def smooth_heaviside(x: float | np.ndarray, k: float, x0: float) -> float | np.ndarray:
     H = 1/(1 + np.exp(-2 * k * (x - x0)))
     return H
+
+
+def mellow_min(x, p):
+    n = len(x)
+    s = np.exp(p*x)
+    mm = 1/p * np.log(np.sum(s, axis=0)/n)
+    dmm = np.exp(p*x)/np.sum(np.exp(p*x), axis=0)
+    return mm, dmm
