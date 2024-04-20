@@ -2,6 +2,7 @@ import time
 import pyvista as pv
 import numpy as np
 from helpers import *
+from math_helpers import *
 from sensitivities import calc_cell_sensitivities, plot_cell_sensitivities
 
 
@@ -237,7 +238,6 @@ def smooth_overhang_mask_gif(mesh, filename):
 
 
 def SoP_connectivity(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
-    plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
     Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -258,7 +258,8 @@ def SoP_connectivity(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]
     #     dzda = [0]
     #     dzdb = [0]
 
-    z_min, dz_min = mellow_min(mesh_rot.points, -80)
+    p = par['softmin_p']
+    z_min, dz_min = mellow_min(mesh_rot.points, p)
     dzda = np.sum(dz_min * np.transpose(dRda @ np.transpose(mesh.points)), axis=0)
     dzdb = np.sum(dz_min * np.transpose(dRdb @ np.transpose(mesh.points)), axis=0)
 
@@ -278,7 +279,6 @@ def SoP_connectivity(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]
 
 
 def SoP_connectivity_no_deriv(angles: list, mesh: pv.PolyData, par) -> float:
-    plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
     _, _, R, _, _ = construct_rotation_matrix(angles[0], angles[1])
@@ -287,16 +287,17 @@ def SoP_connectivity_no_deriv(angles: list, mesh: pv.PolyData, par) -> float:
     mesh_rot = rotate_mesh(mesh, R)
 
     # define z-height of projection plane for fixed projection height
-    z_min = np.array([0, 0, -plane])
 
     # define z-height of projection plane for adaptive projection: lowest z-coordinate, closest to origin (xy norm)
-    if plane <= 0:
-        z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
-        norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
-        min_norm_idx = np.argmin(norm)
-        z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
-    else:  # fixed projection height
-        z_min = np.array([0, 0, -plane])
+    # if plane <= 0:
+    #     z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
+    #     norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
+    #     min_norm_idx = np.argmin(norm)
+    #     z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
+    # else:  # fixed projection height
+    #     z_min = np.array([0, 0, -plane])
+    p = par['softmin_p']
+    z_min, dz_min = mellow_min(mesh_rot.points, p)
 
     # compute average coordinate for each cell, and store in 'Center' array
     mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
@@ -314,11 +315,11 @@ def SoP_connectivity_no_deriv(angles: list, mesh: pv.PolyData, par) -> float:
 if __name__ == '__main__':
 
     # load file and rotate
-    FILE = 'Geometries/cube_cutout.stl'
+    FILE = 'Geometries/bunny/bunny_coarse.stl'
 
     m = pv.read(FILE)
     # m = pv.Cube()
-    m = m.subdivide(2, subfilter='linear')
+    # m = m.subdivide(2, subfilter='linear')
     m = prep_mesh(m, decimation=0)
 
     # set fixed projection distance
@@ -327,7 +328,7 @@ if __name__ == '__main__':
     # set parameters
     print('Generating connectivity')
     # conn = generate_connectivity_obb(m)
-    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    conn = read_connectivity_csv('out/sim_data/bunny_coarse_connectivity.csv')
     print(f'Connectivity took {time.time() - start} seconds')
 
     assert len(conn) == m.n_cells
@@ -338,8 +339,6 @@ if __name__ == '__main__':
         'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
         'up_k': 10,
-        # 'plane_offset': calc_min_projection_distance(m),
-        'plane_offset': -1,
         'SoP_penalty': 1
     }
 
@@ -360,7 +359,7 @@ if __name__ == '__main__':
     a = np.deg2rad(180)
     step = 201
 
-    ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'y')
+    ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'x')
 
     # ang2, f2, da2, db2 = grid_search_1D(SoP_top_smooth, m, args, a, step, 'x')
     #

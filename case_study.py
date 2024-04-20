@@ -337,8 +337,7 @@ def case_study():
         'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
         'up_k': 20,
-        'plane_offset': calc_min_projection_distance(mesh),
-        # 'plane_offset': -1,
+        'softmin_p': -15,
         'SoP_penalty': 1
     }
     smoothing_range = [5, 10, 15, 20, 25]
