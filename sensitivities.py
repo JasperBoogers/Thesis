@@ -6,6 +6,7 @@ from helpers import *
 from io_helpers import read_connectivity_csv
 from support_volume_3D import support_volume_smooth, support_volume_analytic
 from support_volume_2D import support_2D
+from SoP import SoP_connectivity
 from joblib import delayed, Parallel
 
 
@@ -72,9 +73,10 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
     _ = plt.figure()
     _ = plt.loglog(h_range, diffx, 'b', label=r'$V_{,\alpha}$')
     _ = plt.loglog(h_range, diffy, 'k', label=r'$V_{,\beta}$')
-    plt.title(title)
+    # plt.title(title)
     plt.xlabel('Step size [-]')
-    plt.ylabel(r'$\frac{|\tilde{V}_{,\theta} - V_{,\theta}|}{|V_{,\theta}|}$')
+    # plt.ylabel(r'$\frac{|\tilde{V}_{,\theta} - V_{,\theta}|}{|V_{,\theta}|}$')
+    plt.ylabel('Relative error [-]')
     _ = plt.legend()
     if outfile is not None:
         plt.savefig(outfile, format='svg', bbox_inches='tight')
@@ -152,31 +154,30 @@ if __name__ == '__main__':
     start = time.time()
     #
     # load file
-    FILE = 'Geometries/bunny/bunny_coarse.stl'
+    # FILE = 'Geometries/bunny/bunny_coarse.stl'
+    FILE = 'Geometries/cube_cutout.stl'
     m = pv.read(FILE)
-    # m = m.subdivide(2, subfilter='linear')
+    m = m.subdivide(2, subfilter='linear')
     m = prep_mesh(m, decimation=0)
-    connectivity = read_connectivity_csv('out/sim_data/bunny_coarse_connectivity.csv')
+    connectivity = read_connectivity_csv('out/sim_data/connectivity2.csv')
 
-    par = {
+    args = {
         'connectivity': connectivity,
         'build_dir': np.array([0, 0, 1]),
         'down_thresh': np.sin(np.deg2rad(45)),
         'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
         'up_k': 20,
-        'plane_offset': calc_min_projection_distance(m),
-        # 'plane_offset': -1,
-        'SoP_penalty': 1
+        'SoP_penalty': 1,
+        'softmin_p': -140
     }
 
-    m = calc_cell_sensitivities(m, [3.32341069, -4.07440287], par)
-    # steps = np.logspace(-10, 0, 10)
-    #
-    # x = np.deg2rad([50, 10])
-    # args = [conn, OVERHANG_THRESHOLD, PLANE_OFFSET]
-    # finite_differences_plot(SoP_smooth, x, m, args, steps, 'forward'
-    #                         , 'out/supportvolume/SoP/finite_forward_differences_5010_normalized.svg')
+    # m = calc_cell_sensitivities(m, [3.32341069, -4.07440287], par)
+    steps = np.logspace(-10, 0, 10)
+
+    x = np.deg2rad([30, -30])
+    finite_differences_plot(SoP_connectivity, x, m, args, steps, 'forward'
+                            , 'out/supportvolume/SoP/finite_forward_differences_5010_normalized.svg')
 
     # FILE = 'Geometries/cube.stl'
     # m = pv.read(FILE)

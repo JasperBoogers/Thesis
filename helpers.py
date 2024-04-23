@@ -119,6 +119,7 @@ def make_line_plot(x, f, df, gradient=True, titel=None, save=None):
 
     plt.show()
 
+
 def calc_min_projection_distance(m: pv.PolyData | pv.DataSet) -> float:
     bounds = m.bounds
     x = bounds[1] - bounds[0]
@@ -157,7 +158,8 @@ def extract_top_cover(m, upward):
         lines.append(line)
 
         # check if any cells intersect that line
-        intersect = m.find_cells_intersecting_line(line.points[0], line.points[1])
+        # intersect = m.find_cells_intersecting_line(line.points[0], line.points[1])
+        _, intersect = m.ray_trace(line.points[0], line.points[1])
 
         if len(intersect) > 1:
             # centers = m.extract_cells(intersect)['Center']

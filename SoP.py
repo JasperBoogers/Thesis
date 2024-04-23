@@ -4,12 +4,10 @@ import numpy as np
 from helpers import *
 from math_helpers import *
 from support_volume_3D import support_volume_smooth
-from sensitivities import calc_cell_sensitivities, plot_cell_sensitivities
 
 
 def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
     thresh = par['down_thresh']
-    plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRdx, dRdy = construct_rotation_matrix(angles[0], angles[1])
@@ -17,8 +15,9 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, lis
     # rotate mesh
     msh_rot = rotate_mesh(msh, R)
 
-    # define z-height of projection plane for fixed projection height
-    z_min = np.array([0, 0, -plane])
+    z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
+    dzda = dRdx @ rotate2initial(z_min, R)
+    dzdb = dRdy @ rotate2initial(z_min, R)
 
     # compute average coordinate for each cell, and store in 'Center' array
     msh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in msh_rot.cell]
@@ -27,7 +26,6 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, lis
     upward_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] > thresh]
     top_idx, _ = extract_top_cover(msh_rot, upward_idx)
 
-    build_dir = np.array([0, 0, 1])
     volume = 0.0
     dVda = 0.0
     dVdb = 0.0
@@ -35,12 +33,22 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, lis
 
         # extract points and normal vector from cell
         cell = msh_rot.extract_cells(idx)
-        vol, dVda_, dVdb_ = calc_V_under_triangle(cell, angles, build_dir, z_min)
+        vol, dVda_, dVdb_ = calc_V_under_triangle(cell, angles, z_min, par)
         volume += vol
         dVda += dVda_
         dVdb += dVdb_
 
-    return -(volume - msh_rot.volume), [-dVda, -dVdb]
+    # A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRdx, dRdy, z_min, dzda, dzdb, par)
+    #
+    # volume = A*h
+    # dVda = A * dhda + dAda * h
+    # dVdb = A * dhdb + dAdb * h
+    #
+    # volume = sum(volume[top_idx])
+    # dVda = np.sum(dVda[top_idx])
+    # dVdb = np.sum(dVdb[top_idx])
+
+    return (volume - msh_rot.volume), [dVda, dVdb]
 
 
 def SoP_top_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
@@ -319,7 +327,6 @@ if __name__ == '__main__':
     FILE = 'Geometries/cube_cutout.stl'
 
     m = pv.read(FILE)
-    # m = pv.Cube()
     m = m.subdivide(2, subfilter='linear')
     m = prep_mesh(m, decimation=0)
 
@@ -332,7 +339,7 @@ if __name__ == '__main__':
     conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
     print(f'Connectivity took {time.time() - start} seconds')
 
-    assert len(conn) == m.n_cells
+    # assert len(conn) == m.n_cells
     args = {
         'connectivity': conn,
         'build_dir': np.array([0, 0, 1]),
@@ -347,13 +354,13 @@ if __name__ == '__main__':
     # args['plane_offset'] = -1
 
     # ang = np.linspace(np.deg2rad(-45), np.deg2rad(0), 101)
-    # ang = np.deg2rad([-1, 0, 1])
+    # ang = np.deg2rad([0, 1])
     # f = []
     # da = []
     # db = []
     #
     # for a in ang:
-    #     f_, [da_, db_] = SoP_connectivity([a, 0], m, args)
+    #     f_, [da_, db_] = SoP_top_cover([a, 0], m, args)
     #     f.append(-f_)
     #     da.append(-da_)
     #     db.append(-db_)
@@ -361,28 +368,17 @@ if __name__ == '__main__':
     a = np.deg2rad(180)
     step = 201
 
-    ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'x')
+    ang, f, da, db = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
 
-    mesh = pv.Cube()
-    mesh = prep_mesh(mesh, decimation=0)
-    mesh = mesh.subdivide(2, 'linear')
-    mesh = prep_mesh(mesh, decimation=0)
-
-    a2, f2, _, _ = grid_search_1D(support_volume_smooth, mesh, args, a, step, 'x')
-
-
-    # ang2, f2, da2, db2 = grid_search_1D(SoP_top_smooth, m, args, a, step, 'x')
-    #
     _ = plt.plot(np.rad2deg(ang), f, 'g', label='Support on part')
-    _ = plt.plot(np.rad2deg(a2), f2, 'b', label='Convex cube')
     # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
     # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
     # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
     plt.xlabel(r'$\alpha$ [deg]')
     plt.ylabel(r'Volume [mm$^3$]')
     # plt.title(f'Cube with cutout - rotation about x-axis, adaptive vs fixed proj')
-    _ = plt.legend()
-    plt.savefig('out/supportvolume/SoP_vs_convex_comp.svg', format='svg', bbox_inches='tight')
+    # _ = plt.legend()
+    plt.savefig('out/supportvolume/SoP_cube_rotx_Ezair_vol.svg', format='svg', bbox_inches='tight')
     plt.show()
     # #
     # ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
