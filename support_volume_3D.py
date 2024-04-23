@@ -106,7 +106,6 @@ def grid_search_pyvista(mesh=None, max_angle=np.deg2rad(90), num_it=21, plot=Tru
 
 def support_volume_analytic(angles: list, msh: pv.PolyData, par) -> tuple[float, list]:
     thresh = par['down_thresh']
-    plane = par['plane_offset']
 
     # extract angles, construct rotation matrices for x and y rotations
     Rx, Ry, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
@@ -115,13 +114,13 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, par) -> tuple[float,
     msh_rot = rotate_mesh(msh, R)
 
     # define z-height of projection plane for adaptive projection
-    # z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
-    # dzda = dRda @ rotate2initial(z_min, R)
-    # dzdb = dRdb @ rotate2initial(z_min, R)
+    z_min = msh_rot.points[np.argmin(msh_rot.points[:, -1]), :]
+    dzda = dRda @ rotate2initial(z_min, R)
+    dzdb = dRdb @ rotate2initial(z_min, R)
 
     # define z-height of projection plane for fixed projection height
-    z_min = np.array([0, 0, -plane])
-    dzda = dzdb = [0]
+    # z_min = np.array([0, 0, -plane])
+    # dzda = dzdb = [0]
 
     # extract normal vectors
     M = msh_rot['Normals'][:, 2] < thresh
@@ -133,12 +132,11 @@ def support_volume_analytic(angles: list, msh: pv.PolyData, par) -> tuple[float,
     dVda = np.sum(M * A * dhda + M * dAda * h)
     dVdb = np.sum(M * A * dhdb + M * dAdb * h)
 
-    return -volume, [-dVda, -dVdb]
+    return volume, [dVda, dVdb]
 
 
 def support_volume_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
     thresh = par['down_thresh']
-    plane = par['plane_offset']
     k_down = par['down_k']
 
     # extract angles, construct rotation matrices for x and y rotations
@@ -147,7 +145,7 @@ def support_volume_smooth(angles: list, msh: pv.PolyData, par: dict) -> tuple[fl
     # rotate mesh
     msh_rot = rotate_mesh(msh, R)
 
-    z_min, dz_min = mellow_min(msh_rot.points, -80)
+    z_min, dz_min = mellow_min(msh_rot.points, -100)
     dzda = np.sum(dz_min * np.transpose(dRda @ np.transpose(msh.points)), axis=0)
     dzdb = np.sum(dz_min * np.transpose(dRdb @ np.transpose(msh.points)), axis=0)
 
@@ -211,51 +209,54 @@ def main_analytic():
     #     da.append(-da_)
     #     db.append(-db_)
 
-    angles, f, da, db = grid_search_1D(support_volume_smooth, mesh, args, MAX_ANGLE, 201)
-
-    # args['plane_offset'] = 0
-    #
+    # angles, f, da, db = grid_search_1D(support_volume_analytic, mesh, args, MAX_ANGLE, 201)
     # a2, f2, da2, db2 = grid_search_1D(support_volume_smooth, mesh, args, MAX_ANGLE, 201)
     #
-    # args['plane_offset'] = -1
+    # ## plot analytic vs smooth comparison
+    # fig, ax1 = plt.subplots(1, 1)
+    # _ = ax1.plot(np.rad2deg(angles), f, 'b', label='Original')
+    # _ = ax1.plot(np.rad2deg(a2), f2, 'r', label='Smooth')
+    # ax1.legend()
+    # ax1.set_xlabel(r'$\alpha$ [deg]')
+    # ax1.set_ylabel(r'Volume [mm$^3$]')
+    # plt.savefig('out/supportvolume/3D_cube_function_comp.svg', format='svg')
     #
-    # a3, f3, da3, db3 = grid_search_1D(support_volume_smooth, mesh, args, MAX_ANGLE, 201)
+    # fig, ax2 = plt.subplots(1, 1)
+    # _ = ax2.plot(np.rad2deg(angles), da, 'b', label=r'$V_{,\alpha}$, original')
+    # _ = ax2.plot(np.rad2deg(a2), da2, 'r', label=r'$V_{,\alpha}$, smooth')
+    # ax2.legend()
+    # ax2.set_xlabel(r'$\alpha$ [deg]')
+    # ax2.set_ylabel(r'Volume derivative [mm$^3$/deg]')
+    # # plt.title(f'3D cube - Comparison of projection method')
+    # plt.savefig('out/supportvolume/3D_cube_derivative_comp.svg', format='svg')
+    # plt.show()
 
-    _ = plt.plot(np.rad2deg(angles), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(angles), da, 'b', label=r'dVda')
-    _ = plt.plot(np.rad2deg(angles), db, 'k', label=r'dVdb')
-    _ = plt.plot(np.rad2deg(angles), finite_central_differences(f, angles), 'r.', label='Finite differences')
-    plt.xlabel('Angle [deg]')
-    plt.ylabel(r'Volume [mm$^3$]')
-    plt.title(f'3D cube - Comparison of projection method')
-    _ = plt.legend()
-    # plt.savefig('out/supportvolume/3D_cube_rotx_projection_comp.svg', format='svg')
+    x = np.linspace(-1, 1, 201)
+    k_range = np.linspace(1, 10, 10)
+    x_range = np.linspace(0, 0.9, 10)
+
+    fig, ax = plt.subplots(1, 1)
+
+    ax.plot(x, smooth_heaviside(-x, 10, 0), label='Downward field')
+    ax.plot(x, smooth_heaviside(x, 10, 0), label='Upward field')
+
+    ax.set_xlabel('Facet normal z-component [-]')
+    ax.set_ylabel('Heaviside evaluation [-]')
+    ax.legend()
+    plt.savefig('out/smoothing/field_comp_0deg.svg', format='svg', bbox_inches='tight')
     plt.show()
 
-    # perform grid search
-    # if GRID:
-    #     ax, ay, f = grid_search(support_volume_analytic, mesh, OVERHANG_THRESHOLD, PLANE_OFFSET)
-    #     x0 = extract_x0(ax, ay, f, NUM_START)
-    #
-    #     make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), -f, 'Unit cube contour plot', 'out/supportvolume/3D_cube_contour.svg')
-    # else:
-    #     x0 = [np.deg2rad([5, 5])]
-    #
-    # res = []
-    # for i in range(NUM_START):
-    #     start = time()
-    #
-    #     # set initial condition
-    #     a = np.array(x0[i])
-    #     print(f'Iteration {i + 1} with x0: {np.rad2deg(a)} degrees')
-    #
-    #     y = minimize(support_volume_analytic, a, jac=True,
-    #                  args=(mesh, OVERHANG_THRESHOLD, PLANE_OFFSET))
-    #     end = time() - start
-    #     print(y)
-    #     print(f'Optimal orientation at {np.rad2deg(y.x)} degrees')
-    #     print(f'Computation time: {end} s')
-    #     res.append(y)
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(x, smooth_heaviside(-x, 10, np.sin(np.deg2rad(45))), label='Downward field')
+    ax.plot(x, smooth_heaviside(x, 10, 0), label='Upward field')
+
+    ax.set_xlabel('Facet normal z-component [-]')
+    ax.set_ylabel('Field value [-]')
+    ax.legend()
+    plt.savefig('out/smoothing/field_comp_45deg.svg', format='svg', bbox_inches='tight')
+    plt.show()
+
+
 
     print('Finished')
 

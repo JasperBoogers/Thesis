@@ -89,29 +89,41 @@ if __name__ == "__main__":
     lowest_z = np.zeros_like(angles)
     for k, angle in enumerate(angles):
         s, ds, z = support_2D([angle], p, f, n, None)
-        s_a, ds_a, _ = support_2D([angle], p, f, n, 0)
-        s_f, ds_f, _ = support_2D([angle], p, f, n, 1)
+        # s_a, ds_a, _ = support_2D([angle], p, f, n, 0)
+        # s_f, ds_f, _ = support_2D([angle], p, f, n, 1)
 
         support[k] = s
-        support_fix[k] = s_f
-        support_adap[k] = s_a
+        # support_fix[k] = s_f
+        # support_adap[k] = s_a
 
         dSdt[k] = ds
-        dSdt_fix[k] = ds_f
-        dSdt_adap[k] = ds_a
+        # dSdt_fix[k] = ds_f
+        # dSdt_adap[k] = ds_a
 
         lowest_z[k] = z
 
     #### plotting fixed projection
     fig, ax = plt.subplots(1, 1)
-    ax.plot(np.rad2deg(angles), support_fix, 'g', label='Support area')
-    ax.plot(np.rad2deg(angles), dSdt_fix, 'b', label='Calculated derivative')
-    ax.plot(np.rad2deg(angles), finite_central_differences(support_fix, angles), 'r.', label='Finite differences')
-    ax.set_xlabel('Angle [deg]')
+    ax.plot(np.rad2deg(angles), support, 'b', label='General solution')
+    ax.plot(np.rad2deg(angles), np.abs(np.sin(angles)*np.cos(angles)), 'r.', label='Specific solution')
+    # ax.plot(np.rad2deg(angles), finite_central_differences(support, angles), 'r.', label='Finite differences')
+    ax.set_xlabel(r'$\theta$ [deg]')
     ax.set_ylabel(r'Area [mm$^2$]')
     ax.legend()
-    fig.suptitle('Rotating a square, projection to y=-1')
-    plt.savefig('out/supportvolume/2D/2D_solution_fixed_proj.svg', format='svg')
+    # fig.suptitle('Rotating a square, projection to y=-1')
+    plt.savefig('out/supportvolume/2D/2D_solution_comp.svg', format='svg')
+    plt.show()
+
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(np.rad2deg(angles), dSdt, 'b', label='General solution')
+    ax.plot(np.rad2deg(angles), np.sin(4*angles)/2/np.abs(np.sin(2*angles)), 'r.', label='Specific solution')
+    # ax.plot(np.rad2deg(angles), finite_central_differences(support, angles), 'r.', label='Finite differences')
+    ax.set_xlabel(r'$\theta$ [deg]')
+    ax.set_ylabel(r'Area derivative [mm$^2$/deg]')
+    ax.legend()
+    # fig.suptitle('Rotating a square, projection to y=-1')
+    plt.savefig('out/supportvolume/2D/2D_derivative_comp.svg', format='svg')
+    plt.show()
 
     ##### comparison between general and specific solution, no projection #####
     # fig, (ax1, ax2) = plt.subplots(2, 1)

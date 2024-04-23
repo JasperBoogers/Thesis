@@ -3,6 +3,7 @@ import pyvista as pv
 import numpy as np
 from helpers import *
 from math_helpers import *
+from support_volume_3D import support_volume_smooth
 from sensitivities import calc_cell_sensitivities, plot_cell_sensitivities
 
 
@@ -315,11 +316,11 @@ def SoP_connectivity_no_deriv(angles: list, mesh: pv.PolyData, par) -> float:
 if __name__ == '__main__':
 
     # load file and rotate
-    FILE = 'Geometries/bunny/bunny_coarse.stl'
+    FILE = 'Geometries/cube_cutout.stl'
 
     m = pv.read(FILE)
     # m = pv.Cube()
-    # m = m.subdivide(2, subfilter='linear')
+    m = m.subdivide(2, subfilter='linear')
     m = prep_mesh(m, decimation=0)
 
     # set fixed projection distance
@@ -328,7 +329,7 @@ if __name__ == '__main__':
     # set parameters
     print('Generating connectivity')
     # conn = generate_connectivity_obb(m)
-    conn = read_connectivity_csv('out/sim_data/bunny_coarse_connectivity.csv')
+    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
     print(f'Connectivity took {time.time() - start} seconds')
 
     assert len(conn) == m.n_cells
@@ -339,7 +340,8 @@ if __name__ == '__main__':
         'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
         'up_k': 10,
-        'SoP_penalty': 1
+        'SoP_penalty': 1,
+        'softmin_p': -140
     }
 
     # args['plane_offset'] = -1
@@ -361,16 +363,26 @@ if __name__ == '__main__':
 
     ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'x')
 
+    mesh = pv.Cube()
+    mesh = prep_mesh(mesh, decimation=0)
+    mesh = mesh.subdivide(2, 'linear')
+    mesh = prep_mesh(mesh, decimation=0)
+
+    a2, f2, _, _ = grid_search_1D(support_volume_smooth, mesh, args, a, step, 'x')
+
+
     # ang2, f2, da2, db2 = grid_search_1D(SoP_top_smooth, m, args, a, step, 'x')
     #
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Volume')
-    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    plt.xlabel('Angle [deg]')
-    plt.title(f'Cube with cutout - rotation about x-axis, adaptive vs fixed proj')
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Support on part')
+    _ = plt.plot(np.rad2deg(a2), f2, 'b', label='Convex cube')
+    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    plt.xlabel(r'$\alpha$ [deg]')
+    plt.ylabel(r'Volume [mm$^3$]')
+    # plt.title(f'Cube with cutout - rotation about x-axis, adaptive vs fixed proj')
     _ = plt.legend()
-    # plt.savefig('out/supportvolume/SoP_cube_rotx_smooth_top.svg', format='svg', bbox_inches='tight')
+    plt.savefig('out/supportvolume/SoP_vs_convex_comp.svg', format='svg', bbox_inches='tight')
     plt.show()
     # #
     # ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
