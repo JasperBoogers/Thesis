@@ -46,7 +46,6 @@ def cntrl(fun, angles, mesh, args, h):
 
 
 def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', outfile=None):
-
     if method == 'forward':
         res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, args, h) for h in h_range)
         title = f'Forward differences at x={np.rad2deg(angles)} degrees'
@@ -84,23 +83,15 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
 
 
 def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray, par):
-    plane = par['plane_offset']
+    p = par['softmin_p']
 
     _, _, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
     mesh_rot = rotate_mesh(mesh, R)
 
-    # define z-height of projection plane for adaptive projection: lowest z-coordinate, closest to origin (xy norm)
-    if plane <= 0:
-        z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
-        norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
-        min_norm_idx = np.argmin(norm)
-        z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
-        dzda = dRda @ rotate2initial(z_min, R)
-        dzdb = dRdb @ rotate2initial(z_min, R)
-    else:  # fixed projection height
-        z_min = np.array([0, 0, -plane])
-        dzda = [0]
-        dzdb = [0]
+    # set z_min
+    z_min, dz_min = mellow_min(mesh_rot.points, p)
+    dzda = np.sum(dz_min * np.transpose(dRda @ np.transpose(mesh.points)), axis=0)
+    dzdb = np.sum(dz_min * np.transpose(dRdb @ np.transpose(mesh.points)), axis=0)
 
     # compute average coordinate for each cell, and store in 'Center' array
     mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
@@ -110,11 +101,12 @@ def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.nd
     # compute sensitivities for all cells
     A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(mesh, mesh_rot, dRda, dRdb, z_min, dzda, dzdb, par)
 
-    mesh_rot.cell_data['MA'] = M*A/mesh_rot.cell_data['Area']
-    mesh_rot.cell_data['M'] = M/mesh_rot.cell_data['Area']
-    mesh_rot.cell_data['V'] = (M * A * h)/mesh_rot.cell_data['Area']
-    mesh_rot.cell_data['dVda'] = (M * A * dhda + M * dAda * h + dMda * A * h)/mesh_rot.cell_data['Area']
-    mesh_rot.cell_data['dVdb'] = (M * A * dhdb + M * dAdb * h + dMdb * A * h)/mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['MA'] = M * A / mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['M'] = M / mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['V'] = (M * A * h) / mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['Volume'] = (M * A * h)
+    mesh_rot.cell_data['dVda'] = (M * A * dhda + M * dAda * h + dMda * A * h) / mesh_rot.cell_data['Area']
+    mesh_rot.cell_data['dVdb'] = (M * A * dhdb + M * dAdb * h + dMdb * A * h) / mesh_rot.cell_data['Area']
     return mesh_rot
 
 
@@ -136,9 +128,9 @@ def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> 
 
 def func(angles, m, arg):
     a, b = angles
-    v = a**2 * b**2
-    dvda = 2*a*b**2
-    dvdb = 2*a**2*b
+    v = a ** 2 * b ** 2
+    dvda = 2 * a * b ** 2
+    dvdb = 2 * a ** 2 * b
     return v, [dvda, dvdb]
 
 
@@ -155,24 +147,27 @@ if __name__ == '__main__':
     #
     # load file
     # FILE = 'Geometries/bunny/bunny_coarse.stl'
-    FILE = 'Geometries/cube_cutout.stl'
+    FILE = 'Geometries/jet_bracket_2.stl'
     m = pv.read(FILE)
-    m = m.subdivide(2, subfilter='linear')
-    m = prep_mesh(m, decimation=0)
-    connectivity = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    # m = m.subdivide(2, subfilter='linear')
+    m = prep_mesh(m, decimation=0.8)
+    connectivity = read_connectivity_csv('out/sim_data/jet_bracket_2_conn.csv')
 
+    assert len(connectivity) == m.n_cells
     args = {
         'connectivity': connectivity,
         'build_dir': np.array([0, 0, 1]),
         'down_thresh': np.sin(np.deg2rad(45)),
         'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
-        'up_k': 20,
+        'up_k': 10,
         'SoP_penalty': 1,
-        'softmin_p': -140
+        'softmin_p': -15
     }
 
-    # m = calc_cell_sensitivities(m, [3.32341069, -4.07440287], par)
+    m = calc_cell_sensitivities(m, np.deg2rad([481.92160597, 179.79582416]), args)
+    m.plot(scalars='V', scalar_bar_args={"title": "Support volume"}, cmap='RdYlBu', clim=[-1, 1],
+           show_edges=True, lighting=False)
     steps = np.logspace(-10, 0, 10)
 
     x = np.deg2rad([30, -30])
