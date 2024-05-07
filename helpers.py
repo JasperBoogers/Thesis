@@ -20,6 +20,9 @@ def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0, flip=False, translat
     # decimate mesh by decimate*100%
     mesh = mesh.decimate_pro(decimation)
 
+    # ensure mesh is only triangles
+    mesh.clean(inplace=True)
+
     # (re)compute normals, and flip normal direction if needed
     mesh.compute_normals(inplace=True, flip_normals=flip)
 
@@ -101,7 +104,7 @@ def make_contour_plot(x: np.ndarray, y: np.ndarray, f: np.ndarray, titel=None, s
     if titel is not None:
         plt.title(titel)
     if save is not None:
-        plt.savefig(save, format='svg')
+        plt.savefig(save, format='svg', bbox_inches='tight')
     plt.show()
 
 
@@ -115,7 +118,7 @@ def make_line_plot(x, f, df, gradient=True, titel=None, save=None):
     if titel is not None:
         fig.suptitle(titel)
     if save is not None:
-        plt.savefig(save, format='svg')
+        plt.savefig(save, format='svg', bbox_inches='tight')
 
     plt.show()
 
@@ -632,7 +635,6 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
     up_thresh = par['up_thresh']
     down_k = par['down_k']
     up_k = par['up_k']
-    penalty = par['SoP_penalty']
 
     # construct upward, downward and combined fields
     Down = smooth_heaviside(-1 * rotated_mesh['Normals'][:, 2], down_k, down_thresh)
@@ -667,7 +669,7 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
         # loop over connected cells and add support on part contribution
         center = cell['Center'][0]
         conn = connectivity[idx]
-        v = len(conn)*penalty
+        v = len(conn)
 
         if v > 0:
             c = rotated_mesh.extract_cells(conn)['Center']
@@ -757,6 +759,9 @@ def generate_connectivity(mesh):
             # cj = mesh.extract_cells(j)
 
             # check if normals point towards each other
+            if mesh['Center'][j] == mesh['Center'][i]:
+                continue
+
             line = mesh['Center'][j] - mesh['Center'][i]
             line = line/np.linalg.norm(line)
             if np.dot(line, mesh['Normals'][i]) > 0:
@@ -766,7 +771,8 @@ def generate_connectivity(mesh):
 
                 # check that first intersected cell is j, otherwise append first intersected idx
                 ids = ids[ids != i]
-                arr.append(ids[0])
+                if len(ids) > 0:
+                    arr.append(ids[0])
         res.append(list(set(arr)))
 
     return res
@@ -789,6 +795,9 @@ def generate_connectivity_obb(mesh):
 
         for j in range(mesh.n_cells):
             if i != j:
+
+                if np.array_equal(mesh['Center'][j], mesh['Center'][i]):
+                    continue
 
                 # check if normals point towards each other
                 line = mesh['Center'][j] - mesh['Center'][i]
