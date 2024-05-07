@@ -102,6 +102,13 @@ if __name__ == "__main__":
 
         lowest_z[k] = z
 
+    # substitute nan values
+    idx = np.where(np.abs(np.diff(dSdt)) >= 0.5)[0]
+    idx = np.append(idx, [idx-1, idx+1, idx+2])
+    pos = np.append(idx, [1, -2, -1])
+    x = np.insert(angles, pos, np.nan)
+    dSdt = np.insert(dSdt, pos, np.nan)
+
     #### plotting fixed projection
     fig, ax = plt.subplots(1, 1)
     ax.plot(np.rad2deg(angles), support, 'b', label='General solution')
@@ -115,7 +122,7 @@ if __name__ == "__main__":
     plt.show()
 
     fig, ax = plt.subplots(1, 1)
-    ax.plot(np.rad2deg(angles), dSdt, 'b', label='General solution')
+    ax.plot(np.rad2deg(x), dSdt, 'b', label='General solution')
     ax.plot(np.rad2deg(angles), np.sin(4*angles)/2/np.abs(np.sin(2*angles)), 'r.', label='Specific solution')
     # ax.plot(np.rad2deg(angles), finite_central_differences(support, angles), 'r.', label='Finite differences')
     ax.set_xlabel(r'$\theta$ [deg]')
