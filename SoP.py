@@ -321,10 +321,69 @@ def SoP_connectivity_no_deriv(angles: list, mesh: pv.PolyData, par) -> float:
     return volume
 
 
+def SoP_connectivity_penalty(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
+    p = par['softmin_p']
+    up_thresh = par['up_thresh']
+    up_k = par['up_k']
+    penalty = par['SoP_penalty']
+    build_dir = par['build_dir']
+
+    # extract angles, construct rotation matrices for x and y rotations
+    Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
+
+    # rotate mesh
+    rotated_mesh = rotate_mesh(mesh, R)
+
+    # set z_min
+    z_min, dz_min = mellow_min(rotated_mesh.points, p)
+    dzda = np.sum(dz_min * np.transpose(dRda @ np.transpose(mesh.points)), axis=0)
+    dzdb = np.sum(dz_min * np.transpose(dRdb @ np.transpose(mesh.points)), axis=0)
+
+    # compute average coordinate for each cell, and store in 'Center' array
+    rotated_mesh.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in rotated_mesh.cell]
+
+    # compute overhang mask
+    M, dMda, dMdb = smooth_overhang_connectivity(mesh, rotated_mesh, R, dRda, dRdb, par)
+
+    # extract points and normals
+    points = np.array([c.points for c in rotated_mesh.cell])
+    points0 = np.array([c.points for c in mesh.cell])
+    normals = rotated_mesh['Normals']
+    normals0 = mesh['Normals']
+
+    # derivative of normals
+    dnda = np.transpose(dRda @ np.transpose(normals0))
+    dndb = np.transpose(dRda @ np.transpose(normals0))
+
+    # compute area and derivative
+    A = mesh['Area'] * np.dot(-build_dir, np.transpose(normals))
+    dAda = mesh['Area'] * np.dot(-build_dir, np.transpose(dnda))
+    dAdb = mesh['Area'] * np.dot(-build_dir, np.transpose(dndb))
+
+    # compute height and derivative
+    h = np.sum(points[:, :, -1], axis=1) / 3 - z_min[-1]
+    dhda = np.sum(np.transpose(dRda @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzda[-1]
+    dhdb = np.sum(np.transpose(dRdb @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzdb[-1]
+
+    volume = sum(M * A * h)
+    dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
+    dVdb = np.sum(M * A * dhdb + M * dAdb * h + dMdb * A * h)
+
+    U = smooth_heaviside(rotated_mesh['Normals'][:, 2], up_k, up_thresh)
+    dUda = U * (1 - U) * 2 * up_k * dnda[:, -1]
+    dUdb = U * (1 - U) * 2 * up_k * dndb[:, -1]
+
+    res = volume + penalty * sum(U * M * mesh['Area'])
+    res_da = dVda + penalty * sum(dUda * M * mesh['Area'] + U * dMda * mesh['Area'])
+    res_db = dVdb + penalty * sum(dUdb * M * mesh['Area'] + U * dMdb * mesh['Area'])
+
+    return res, [res_da, res_db]
+
+
 if __name__ == '__main__':
 
     # load file and rotate
-    FILE = 'Geometries/cube_cutout.stl'
+    FILE = 'Geometries/bunny/bunny_coarse.stl'
 
     m = pv.read(FILE)
     m = m.subdivide(2, subfilter='linear')
@@ -336,10 +395,11 @@ if __name__ == '__main__':
     # set parameters
     print('Generating connectivity')
     # conn = generate_connectivity_obb(m)
+    # write_connectivity_csv(conn, 'out/sim_data/bunny_coarse_connectivity.csv')
     conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
     print(f'Connectivity took {time.time() - start} seconds')
 
-    # assert len(conn) == m.n_cells
+    assert len(conn) == m.n_cells
     args = {
         'connectivity': conn,
         'build_dir': np.array([0, 0, 1]),
@@ -348,7 +408,7 @@ if __name__ == '__main__':
         'down_k': 10,
         'up_k': 10,
         'SoP_penalty': 1,
-        'softmin_p': -140
+        'softmin_p': -400
     }
 
     # args['plane_offset'] = -1
@@ -360,26 +420,29 @@ if __name__ == '__main__':
     # db = []
     #
     # for a in ang:
-    #     f_, [da_, db_] = SoP_top_cover([a, 0], m, args)
+    #     f_, [da_, db_] = SoP_connectivity_penalty([a, 0], m, args)
     #     f.append(-f_)
     #     da.append(-da_)
     #     db.append(-db_)
+    # #
+    # a = np.deg2rad(180)
+    # step = 21
+    # #
+    # ax, ay, f, da, db = grid_search(SoP_connectivity, m, args, a, 21)
+    # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f)
 
-    a = np.deg2rad(180)
-    step = 201
-
-    ang, f, da, db = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
-
-    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Support on part')
+    # ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'x')
+    #
+    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Support on part')
     # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
     # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    plt.xlabel(r'$\alpha$ [deg]')
-    plt.ylabel(r'Volume [mm$^3$]')
-    # plt.title(f'Cube with cutout - rotation about x-axis, adaptive vs fixed proj')
+    # # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    # plt.xlabel(r'$\beta [deg]')
+    # plt.ylabel(r'Volume [mm$^3$]')
+    # # # plt.title(f'Cube with cutout - rotation about x-axis, adaptive vs fixed proj')
     # _ = plt.legend()
-    plt.savefig('out/supportvolume/SoP_cube_rotx_Ezair_vol.svg', format='svg', bbox_inches='tight')
-    plt.show()
+    # # plt.savefig('out/supportvolume/SoP_cube_rotx_Ezair_vol.svg', format='svg', bbox_inches='tight')
+    # plt.show()
     # #
     # ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
     #
@@ -394,7 +457,16 @@ if __name__ == '__main__':
     # plt.savefig('out/supportvolume/SoP_cube_smooth_comp_x.svg', format='svg', bbox_inches='tight')
     # plt.show()
 
+    plt.figure()
+    a, f, _, _ = grid_search_1D(support_volume_smooth, prep_mesh(pv.Cube()), args, np.deg2rad(180), 201)
+    a2, f2, _, _ = grid_search_1D(SoP_connectivity, m, args, np.deg2rad(180), 201)
+    _ = plt.plot(np.rad2deg(a), f, label='convex cube')
+    _ = plt.plot(np.rad2deg(a2), f2, label='Support on part')
+    plt.legend()
+    plt.xlabel('Rotation about x-axis [deg]')
+    plt.ylabel(fr'Volume [mm$^3$]')
+    plt.savefig('out/supportvolume/SoP_vs_convex_comp.svg', format='svg', bbox_inches='tight')
+    plt.show()
+
     end = time.time()
     print(f'Finished in {end - start} seconds')
-    # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f, 'Reference - unit cube')
-    print(f'Minimum volume: {min(f)}')
