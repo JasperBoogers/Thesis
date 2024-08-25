@@ -1,5 +1,5 @@
 from helpers.helpers import *
-from sensitivities import calc_cell_sensitivities
+from Sensitivities import calc_cell_sensitivities
 
 
 if __name__ == '__main__':

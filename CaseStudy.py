@@ -2,8 +2,8 @@ import os.path
 import time
 import logging
 from helpers.helpers import *
-from SoP import SoP_connectivity, SoP_connectivity_no_deriv, SoP_connectivity_penalty
-from sensitivities import calc_cell_sensitivities
+from NonConvex import SoP_connectivity, SoP_connectivity_no_deriv, SoP_connectivity_penalty
+from Sensitivities import calc_cell_sensitivities
 from scipy.optimize import minimize, differential_evolution, Bounds
 from scipy.stats import qmc
 from matplotlib import pyplot as plt

@@ -1,6 +1,6 @@
 import time
 from helpers.helpers import *
-from SoP import SoP_connectivity
+from NonConvex import SoP_connectivity
 from joblib import delayed, Parallel
 from os import cpu_count
 

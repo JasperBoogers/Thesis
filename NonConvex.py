@@ -1,6 +1,6 @@
 import time
 from helpers.helpers import *
-from support_volume_3D import support_volume_smooth
+from Convex3D import support_volume_smooth
 
 
 def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, list]:
@@ -338,7 +338,7 @@ def SoP_connectivity_penalty(angles: list, mesh: pv.PolyData, par) -> tuple[floa
     return sum(res), [res_da, res_db]
 
 
-def SoP_interface(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
+def SoP_interface_area(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
     # extract angles, construct rotation matrices for x and y rotations
     Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
 
