@@ -1,8 +1,5 @@
 import time
-import pyvista as pv
-import numpy as np
-from helpers import *
-from math_helpers import *
+from helpers.helpers import *
 from support_volume_3D import support_volume_smooth
 
 
@@ -26,27 +23,15 @@ def SoP_top_cover(angles: list, msh: pv.PolyData, par: dict) -> tuple[float, lis
     upward_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] > thresh]
     top_idx, _ = extract_top_cover(msh_rot, upward_idx)
 
-    volume = 0.0
-    dVda = 0.0
-    dVdb = 0.0
-    for idx in top_idx:  # TODO convert to calc_V_vectorized
+    A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRdx, dRdy, z_min, dzda, dzdb, par)
 
-        # extract points and normal vector from cell
-        cell = msh_rot.extract_cells(idx)
-        vol, dVda_, dVdb_ = calc_V_under_triangle(cell, angles, z_min, par)
-        volume += vol
-        dVda += dVda_
-        dVdb += dVdb_
+    volume = A*h
+    dVda = A * dhda + dAda * h
+    dVdb = A * dhdb + dAdb * h
 
-    # A, dAda, dAdb, h, dhda, dhdb = calc_V_vectorized(msh, msh_rot, dRdx, dRdy, z_min, dzda, dzdb, par)
-    #
-    # volume = A*h
-    # dVda = A * dhda + dAda * h
-    # dVdb = A * dhdb + dAdb * h
-    #
-    # volume = sum(volume[top_idx])
-    # dVda = np.sum(dVda[top_idx])
-    # dVdb = np.sum(dVdb[top_idx])
+    volume = sum(volume[top_idx])
+    dVda = np.sum(dVda[top_idx])
+    dVdb = np.sum(dVdb[top_idx])
 
     return (volume - msh_rot.volume), [dVda, dVdb]
 
@@ -180,7 +165,7 @@ def SoP_naive_correction(angles: list, msh: pv.PolyData, thresh: float, plane: f
     msh_rot = rotate_mesh(msh, R)
 
     # compute average coordinate for each cell, and store in 'Center' array
-    msh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in m.cell]
+    msh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in msh.cell]
 
     # extract overhanging faces
     overhang_idx = np.arange(msh_rot.n_cells)[msh_rot['Normals'][:, 2] < -thresh]
@@ -212,7 +197,7 @@ def SoP_naive_correction(angles: list, msh: pv.PolyData, thresh: float, plane: f
     return -volume, [-dVda, -dVdb]
 
 
-def smooth_overhang_mask_gif(mesh, filename):
+def smooth_overhang_mask_gif(mesh, filename, par):
     p = pv.Plotter(off_screen=True, notebook=False)
     p.add_axes()
     p.add_mesh(mesh, name='mesh', lighting=False,
@@ -222,21 +207,18 @@ def smooth_overhang_mask_gif(mesh, filename):
     p.open_gif(filename)
     n_frames = 120
     angles = np.deg2rad(np.linspace(180, 0, n_frames))
-    for f in range(n_frames):
+    for frame in range(n_frames):
         # extract angles, construct rotation matrices for x and y rotations
-        Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[f], 0)
+        Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[frame], 0)
 
         # rotate mesh
         mesh_rot = rotate_mesh(mesh, R)
-
-        build_dir = np.array([0, 0, -1])
 
         # compute average coordinate for each cell, and store in 'Center' array
         mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
 
         # compute overhang mask
-        k = 10
-        overhang = smooth_overhang(mesh_rot, build_dir, 1e-5, k)
+        overhang = smooth_overhang(mesh_rot, mesh_rot, R, Ra, Rb, par)
         p.add_mesh(mesh_rot, scalars=overhang, name='mesh', lighting=False,
                    scalar_bar_args={"title": "Overhang value"}, clim=[-2, 1], cmap='brg', show_edges=True)
         p.update()
@@ -253,19 +235,6 @@ def SoP_connectivity(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]
 
     # rotate mesh
     mesh_rot = rotate_mesh(mesh, R)
-
-    # define z-height of projection plane for adaptive projection: lowest z-coordinate, closest to origin (xy norm)
-    # if plane <= 0:
-    #     z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
-    #     norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
-    #     min_norm_idx = np.argmin(norm)
-    #     z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
-    #     dzda = dRda @ rotate2initial(z_min, R)
-    #     dzdb = dRdb @ rotate2initial(z_min, R)
-    # else:  # fixed projection height
-    #     z_min = np.array([0, 0, -plane])
-    #     dzda = [0]
-    #     dzdb = [0]
 
     p = par['softmin_p']
     z_min, dz_min = mellow_min(mesh_rot.points, p)
@@ -295,16 +264,6 @@ def SoP_connectivity_no_deriv(angles: list, mesh: pv.PolyData, par) -> float:
     # rotate mesh
     mesh_rot = rotate_mesh(mesh, R)
 
-    # define z-height of projection plane for fixed projection height
-
-    # define z-height of projection plane for adaptive projection: lowest z-coordinate, closest to origin (xy norm)
-    # if plane <= 0:
-    #     z_idx = np.where(mesh_rot.points[:, -1] == min(mesh_rot.points[:, -1]))[0]
-    #     norm = np.linalg.norm(mesh_rot.points[z_idx, :-1], axis=1)
-    #     min_norm_idx = np.argmin(norm)
-    #     z_min = mesh_rot.points[z_idx[min_norm_idx], :] + np.array([0, 0, plane])
-    # else:  # fixed projection height
-    #     z_min = np.array([0, 0, -plane])
     p = par['softmin_p']
     z_min, dz_min = mellow_min(mesh_rot.points, p)
 
@@ -365,7 +324,6 @@ def SoP_connectivity_penalty(angles: list, mesh: pv.PolyData, par) -> tuple[floa
     dhda = np.sum(np.transpose(dRda @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzda[-1]
     dhdb = np.sum(np.transpose(dRdb @ np.transpose(points0, (0, 2, 1)), (0, 2, 1))[:, :, -1], axis=1) / 3 - dzdb[-1]
 
-    volume = sum(M * A * h)
     dVda = np.sum(M * A * dhda + M * dAda * h + dMda * A * h)
     dVdb = np.sum(M * A * dhdb + M * dAdb * h + dMdb * A * h)
 
@@ -373,99 +331,85 @@ def SoP_connectivity_penalty(angles: list, mesh: pv.PolyData, par) -> tuple[floa
     dUda = U * (1 - U) * 2 * up_k * dnda[:, -1]
     dUdb = U * (1 - U) * 2 * up_k * dndb[:, -1]
 
-    res = volume + penalty * sum(U * M * mesh['Area'])
+    res = (1-penalty) * M * A * h + penalty * M * mesh['Area']
     res_da = dVda + penalty * sum(dUda * M * mesh['Area'] + U * dMda * mesh['Area'])
     res_db = dVdb + penalty * sum(dUdb * M * mesh['Area'] + U * dMdb * mesh['Area'])
 
-    return res, [res_da, res_db]
+    return sum(res), [res_da, res_db]
+
+
+def SoP_interface(angles: list, mesh: pv.PolyData, par) -> tuple[float, list]:
+    # extract angles, construct rotation matrices for x and y rotations
+    Ra, Rb, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
+
+    # rotate mesh
+    mesh_rot = rotate_mesh(mesh, R)
+
+    # compute average coordinate for each cell, and store in 'Center' array
+    mesh_rot.cell_data['Center'] = [np.sum(c.points, axis=0) / 3 for c in mesh_rot.cell]
+
+    # compute overhang mask
+    M, dMda, dMdb = smooth_overhang_connectivity(mesh, mesh_rot, R, dRda, dRdb, par)
+
+    area = M*mesh_rot['Area']
+
+    return sum(area), [0, 0]
 
 
 if __name__ == '__main__':
 
-    # load file and rotate
-    FILE = 'Geometries/bunny/bunny_coarse.stl'
-
-    m = pv.read(FILE)
-    m = m.subdivide(2, subfilter='linear')
-    m = prep_mesh(m, decimation=0)
-
-    # set fixed projection distance
     start = time.time()
+    size = 10000
+    m = decimate_quadric('Geometries/Armadillo.stl', size)
+    connectivity = read_connectivity_csv('out/sim_data/connectivity_armadillo_10000.csv')
 
-    # set parameters
-    print('Generating connectivity')
-    # conn = generate_connectivity_obb(m)
-    # write_connectivity_csv(conn, 'out/sim_data/bunny_coarse_connectivity.csv')
-    conn = read_connectivity_csv('out/sim_data/connectivity2.csv')
-    print(f'Connectivity took {time.time() - start} seconds')
+    m = prep_mesh(m, scaling=0.05)
+    assert len(connectivity) == m.n_cells
 
-    assert len(conn) == m.n_cells
     args = {
-        'connectivity': conn,
+        'connectivity': connectivity,
         'build_dir': np.array([0, 0, 1]),
         'down_thresh': np.sin(np.deg2rad(0)),
         'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
         'up_k': 10,
-        'SoP_penalty': 1,
-        'softmin_p': -400
+        'SoP_penalty': 0,
+        'softmin_p': -40
     }
+    ang = np.deg2rad(180)
+    step = 201
 
-    # args['plane_offset'] = -1
+    ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, ang, step, 'x')
 
-    # ang = np.linspace(np.deg2rad(-45), np.deg2rad(0), 101)
-    # ang = np.deg2rad([0, 1])
-    # f = []
-    # da = []
-    # db = []
-    #
-    # for a in ang:
-    #     f_, [da_, db_] = SoP_connectivity_penalty([a, 0], m, args)
-    #     f.append(-f_)
-    #     da.append(-da_)
-    #     db.append(-db_)
-    # #
-    # a = np.deg2rad(180)
-    # step = 21
-    # #
-    # ax, ay, f, da, db = grid_search(SoP_connectivity, m, args, a, 21)
-    # make_contour_plot(np.rad2deg(ax), np.rad2deg(ay), f)
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Support on part')
+    _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
+    _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
+    _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
+    plt.xlabel(r'$\beta [deg]')
+    plt.ylabel(r'Volume [mm$^3$]')
+    _ = plt.legend()
+    plt.show()
 
-    # ang, f, da, db = grid_search_1D(SoP_connectivity, m, args, a, step, 'x')
-    #
-    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Support on part')
-    # _ = plt.plot(np.rad2deg(ang), da, 'b.', label=r'$V_{,\alpha}$')
-    # _ = plt.plot(np.rad2deg(ang), db, 'k.', label=r'$V_{,\beta}$')
-    # # _ = plt.plot(np.rad2deg(ang), finite_central_differences(f, ang), 'r.', label='Finite differences')
-    # plt.xlabel(r'$\beta [deg]')
-    # plt.ylabel(r'Volume [mm$^3$]')
-    # # # plt.title(f'Cube with cutout - rotation about x-axis, adaptive vs fixed proj')
-    # _ = plt.legend()
-    # # plt.savefig('out/supportvolume/SoP_cube_rotx_Ezair_vol.svg', format='svg', bbox_inches='tight')
-    # plt.show()
-    # #
-    # ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, a, step, 'x')
-    #
-    # _ = plt.figure()
-    # _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
-    # _ = plt.plot(np.rad2deg(ang), -f2, 'b', label='Original')
-    # plt.xlabel('Angle [deg]')
-    # plt.ylabel(fr'Volume [mm$^3$]')
-    # # plt.ylim([-2, 2])
-    # plt.title('Comparison of smoothing on cube with cutout')
-    # plt.legend()
-    # plt.savefig('out/supportvolume/SoP_cube_smooth_comp_x.svg', format='svg', bbox_inches='tight')
-    # plt.show()
+    ang2, f2, da2, db2 = grid_search_1D(SoP_top_cover, m, args, ang, step, 'x')
+
+    _ = plt.figure()
+    _ = plt.plot(np.rad2deg(ang), f, 'g', label='Smooth')
+    _ = plt.plot(np.rad2deg(ang), f2, 'b', label='Original')
+    plt.xlabel('Angle [deg]')
+    plt.ylabel(fr'Volume [mm$^3$]')
+    plt.legend()
+    plt.savefig('out/supportvolume/SoP_cube_smooth_comp_x.svg', format='svg', bbox_inches='tight')
+    plt.show()
 
     plt.figure()
-    a, f, _, _ = grid_search_1D(support_volume_smooth, prep_mesh(pv.Cube()), args, np.deg2rad(180), 201)
-    a2, f2, _, _ = grid_search_1D(SoP_connectivity, m, args, np.deg2rad(180), 201)
-    _ = plt.plot(np.rad2deg(a), f, label='convex cube')
-    _ = plt.plot(np.rad2deg(a2), f2, label='Support on part')
+    a, f, _, _ = grid_search_1D(support_volume_smooth, m, args, ang, 401, 'y')
+    a2, f2, _, _ = grid_search_1D(SoP_connectivity, m, args, ang, 401, 'y')
+    _ = plt.plot(np.rad2deg(a), f, label='Original')
+    _ = plt.plot(np.rad2deg(a2), f2, label='Compensated')
     plt.legend()
-    plt.xlabel('Rotation about x-axis [deg]')
-    plt.ylabel(fr'Volume [mm$^3$]')
-    plt.savefig('out/supportvolume/SoP_vs_convex_comp.svg', format='svg', bbox_inches='tight')
+    plt.xlabel(r'$\beta$ [deg]')
+    plt.ylabel(fr'V [mm$^3$]')
+    plt.savefig('out/supportvolume/SoP_vs_convex_interface_y.svg', format='svg', bbox_inches='tight')
     plt.show()
 
     end = time.time()
