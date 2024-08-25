@@ -1,11 +1,7 @@
-import pyvista as pv
-import numpy as np
-import pandas as pd
 from scipy.spatial.transform import Rotation
 from matplotlib import pyplot as plt
 from os import cpu_count
-from vtk import (vtkOBBTree, vtkPoints, vtkCellArray, vtkQuadricDecimation, vtkPolyData, vtkTransform,
-                 vtkTransformPolyDataFilter, vtkCenterOfMass, vtkPolyDataNormals, vtkCellCenters, vtkIdList)
+from vtk import vtkOBBTree, vtkPoints, vtkCellArray, vtkQuadricDecimation
 from joblib import delayed, Parallel
 from math_helpers import *
 from io_helpers import *
@@ -46,7 +42,7 @@ def decimate_quadric(filename, target_size=1000, vtk=False):
 
     flt = vtkQuadricDecimation()
     flt.SetInputData(mesh)
-    flt.SetTargetReduction((mesh.GetNumberOfCells()-target_size)/mesh.GetNumberOfCells())
+    flt.SetTargetReduction((mesh.GetNumberOfCells() - target_size) / mesh.GetNumberOfCells())
     flt.SetVolumePreservation(True)
     flt.Update()
 
@@ -89,7 +85,7 @@ def construct_supports(o: pv.PolyData | pv.DataSet, p: pv.PolyData) -> pv.PolyDa
 
 
 def construct_support_volume(mesh: pv.PolyData | pv.DataSet, threshold: float, plane_offset: float = 1.0) -> tuple[
-    pv.PolyData, pv.PolyData, pv.PolyData]:
+        pv.PolyData, pv.PolyData, pv.PolyData]:
     # extract overhanging surfaces
     overhang = extract_overhang(mesh, threshold)
 
@@ -711,8 +707,12 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
             dl_da = np.transpose(dRda @ rotate2initial(l.transpose(), R))
             dl_db = np.transpose(dRdb @ rotate2initial(l.transpose(), R))
 
-            dm_da_val = np.sum(np.dot(-build_dir, dl_da.transpose()) * Dj * Ui + np.dot(-build_dir, l.transpose()) * dDj_da * Ui + np.dot(-build_dir, l.transpose()) * Dj * dUi_da) / v
-            dm_db_val = np.sum(np.dot(-build_dir, dl_db.transpose()) * Dj * Ui + np.dot(-build_dir, l.transpose()) * dDj_db * Ui + np.dot(-build_dir, l.transpose()) * Dj * dUi_db) / v
+            dm_da_val = np.sum(np.dot(-build_dir, dl_da.transpose()) * Dj * Ui + np.dot(-build_dir,
+                                                                                        l.transpose()) * dDj_da * Ui + np.dot(
+                -build_dir, l.transpose()) * Dj * dUi_da) / v
+            dm_db_val = np.sum(np.dot(-build_dir, dl_db.transpose()) * Dj * Ui + np.dot(-build_dir,
+                                                                                        l.transpose()) * dDj_db * Ui + np.dot(
+                -build_dir, l.transpose()) * Dj * dUi_db) / v
 
             dmask_da[idx] += dm_da_val
             dmask_db[idx] += dm_db_val
@@ -783,7 +783,7 @@ def generate_connectivity(mesh):
                 continue
 
             line = mesh['Center'][j] - mesh['Center'][i]
-            line = line/np.linalg.norm(line)
+            line = line / np.linalg.norm(line)
             if np.dot(line, mesh['Normals'][i]) > 0:
 
                 # do ray tracing for check
@@ -827,7 +827,8 @@ def generate_connectivity_obb(mesh):
                     # _, ids = mesh.ray_trace(mesh['Center'][i], mesh['Center'][i] + 2 * line)
                     sec = vtkPoints()
 
-                    code = obb.IntersectWithLine(mesh['Center'][i] + 1e-3*line, mesh['Center'][j] - 1e-3 * line, sec, None)
+                    code = obb.IntersectWithLine(mesh['Center'][i] + 1e-3 * line, mesh['Center'][j] - 1e-3 * line, sec,
+                                                 None)
 
                     # check that first intersected cell is j, otherwise append first intersected idx
                     # ids = ids[ids != i]
@@ -839,7 +840,6 @@ def generate_connectivity_obb(mesh):
 
 
 def generate_connectivity_vtk(poly, threshold=0):
-
     poly = vtk_move_to_origin(poly)
 
     # compute facet normals
