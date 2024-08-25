@@ -1,11 +1,8 @@
-import csv
+import os.path
 import time
 import logging
-import pyvista as pv
-import numpy as np
-import pandas as pd
-from helpers import *
-from SoP import SoP_top_cover, SoP_connectivity, SoP_connectivity_no_deriv, SoP_connectivity_penalty
+from helpers.helpers import *
+from SoP import SoP_connectivity, SoP_connectivity_no_deriv, SoP_connectivity_penalty
 from sensitivities import calc_cell_sensitivities
 from scipy.optimize import minimize, differential_evolution, Bounds
 from scipy.stats import qmc
@@ -163,7 +160,7 @@ def case_study_up_thresh(mesh, par, up_range, savename):
 
     a_max = np.deg2rad(180)
     step = 201
-    dim = 'y'
+    dim = 'x'
 
     fun = []
     dfun = []
@@ -235,7 +232,7 @@ def case_study_optimizers(mesh, par, methods, savename):
         columns=['Method', 'Function value', 'x min', '# evaluations', 'Duration', 'Jacobian', 'x steps'])
 
     # compare optimization results for each method
-    x0 = np.deg2rad([-50, -50])
+    x0 = np.deg2rad([-90, -70])
     logging.debug(f'x0={x0}')
     opt_x = []
     for m in grad_methods:
@@ -246,7 +243,7 @@ def case_study_optimizers(mesh, par, methods, savename):
         opt_start = time.time()
         y = minimize(SoP_connectivity, x0, jac=True, args=(mesh, fun_arg), method=m, tol=1e-3, callback=callbck)
         opt_end = time.time()
-        logging.debug(f'Finished in {opt_end - opt_start}')
+        logging.info(f'Finished in {opt_end - opt_start}')
         logging.debug(y)
 
         d = {
@@ -269,7 +266,7 @@ def case_study_optimizers(mesh, par, methods, savename):
         y = minimize(SoP_connectivity_no_deriv, x0, jac='2-point', args=(mesh, fun_arg), method=m, tol=1e-3,
                      callback=callbck)
         opt_end = time.time()
-        logging.debug(f'Finished in {opt_end - opt_start}')
+        logging.info(f'Finished in {opt_end - opt_start}')
         logging.debug(y)
 
         # append results
@@ -309,7 +306,7 @@ def case_study_optimizers(mesh, par, methods, savename):
     res.to_excel(f'{savename}_opt_comp.xlsx')
 
     # make gif
-    opt_steps_gif(mesh, fun_arg, res.loc[res['Method'] == 'BFGS', 'x steps'].values, savename)
+    # opt_steps_gif(mesh, fun_arg, res.loc[res['Method'] == 'BFGS', 'x steps'].values, savename)
 
 
 def case_study_GA(mesh, par, savename):
@@ -373,8 +370,13 @@ def case_study_GA(mesh, par, savename):
     logging.debug(f'Jacobian: {jac[idx]}')
     logging.debug(f'Total # of evaluations: {n_fev}')
 
+    # check if ax and ay are in degrees
+    if max(ax) <= np.pi:
+        ax = np.rad2deg(ax)
+        ay = np.rad2deg(ay)
+
     # plot steps in contour plot
-    xx, yy = np.meshgrid(np.rad2deg(ax), np.rad2deg(ay))
+    xx, yy = np.meshgrid(ax, ay)
     fig = plt.figure()
     cp = plt.contour(xx, yy, contour)
     for idx, row in enumerate(steps):
@@ -389,20 +391,34 @@ def case_study_GA(mesh, par, savename):
 
 def opt_steps_gif(mesh, args, x, filename):
     mesh_rot = calc_cell_sensitivities(mesh, np.deg2rad(x[0]), args)
+    d = calc_min_projection_distance(mesh_rot)
+    cam_offset = 10
 
     p = pv.Plotter(off_screen=True, notebook=False)
-    p.add_mesh(mesh_rot, name='mesh', lighting=False, scalars='V',
-               scalar_bar_args={"title": "Support volume"}, clim=[-1, 1], cmap='RdYlBu', show_edges=True)
+    p.add_mesh(mesh_rot, name='mesh', lighting=True, scalars='MA',
+               scalar_bar_args={"title": "Support requirement"}, clim=[-1, 1], cmap='RdYlBu')
+    plane = pv.Plane(center=(0, 0, mesh_rot.bounds[-2]),
+                    i_size=1.5*d,
+                    j_size=1.5*d,
+                    direction=(0, 0, 1))
+    p.add_mesh(plane, style='wireframe', color='k', lighting=True, name='bed')
     p.add_axes()
+    p.camera.position = (15, 9, plane.bounds[-1] + cam_offset)
     p.show(interactive_update=True)
 
-    p.open_gif(f'{filename}_opt_steps.gif', fps=2)
+    p.open_gif(f'{filename}_opt_steps.gif', fps=1)
 
     for xi in x[1:]:
         mesh_rot = calc_cell_sensitivities(mesh, np.deg2rad(xi), args)
 
-        _ = p.add_mesh(mesh_rot, name='mesh', lighting=False, scalars='V',
-                       scalar_bar_args={"title": "Support volume"}, clim=[-1, 1], cmap='RdYlBu', show_edges=True)
+        _ = p.add_mesh(mesh_rot, name='mesh', lighting=True, scalars='MA',
+                       scalar_bar_args={"title": "Support requirement"}, clim=[-1, 1], cmap='RdYlBu')
+        plane = pv.Plane(center=(0, 0, mesh_rot.bounds[-2]),
+                         i_size=2.2 * d,
+                         j_size=2.2 * d,
+                         direction=(0, 0, 1))
+        p.add_mesh(plane, style='wireframe', color='k', lighting=True, name='bed')
+        p.camera.position = (15, 9, plane.bounds[-1] + cam_offset)
         p.update()
         p.write_frame()
 
@@ -421,23 +437,30 @@ def plot_opt_steps(mesh, args, x):
         p.show()
 
 
-def case_study_time(mesh, par, div, savename):
+def case_study_time(geometry, par, sizes, savename, cube=False):
     fun_arg = par.copy()
 
     conn_times = []
     rot_times = []
     volumes = []
     n_cell = []
-    for i in div:
 
-        # reduce mesh size
-        mesh_div = mesh.subdivide(i, 'linear')
-        mesh_div = prep_mesh(mesh_div, decimation=0)
+    for i in sizes:
+
+        # reduce mesh size, if considering a cube use subdivide instead of decimation
+        if cube:
+            mesh_div = geometry.subdivide(i, 'linear')
+            mesh_div = prep_mesh(mesh_div, decimation=0)
+        else:
+            mesh_div = decimate_quadric(geometry, i)
+            mesh_div = prep_mesh(mesh_div, scaling=0.05)
         n_cell.append(mesh_div.n_cells)
+
+        logging.info(f'Mesh has size {mesh_div.n_cells}')
 
         # generate connectivity
         start = time.time()
-        connectivity = generate_connectivity_obb(mesh_div)
+        connectivity = generate_connectivity_vtk(mesh_div)
         conn_times.append(time.time() - start)
 
         # no point in doing calculations if something went wrong in connectivity generation
@@ -447,14 +470,17 @@ def case_study_time(mesh, par, div, savename):
             continue
 
         # perform 1D grid search
-        angles = np.rad2deg([45, 45])
+        if cube:
+            angles = np.deg2rad([45, 45])
+        else:
+            angles = np.rad2deg([0, 0])
         fun_arg['connectivity'] = connectivity
         start = time.time()
         V, _ = SoP_connectivity(angles, mesh_div, fun_arg)
         rot_times.append(time.time() - start)
         volumes.append(V)
 
-        logging.info(f'Division {i} took {conn_times[-1] + rot_times[-1]} seconds')
+        logging.info(f'Took {conn_times[-1] + rot_times[-1]} seconds')
 
     # save data
     write_csv([n_cell, conn_times, rot_times, volumes], f'{savename}_time_scaling.csv')
@@ -479,7 +505,7 @@ def case_study_time(mesh, par, div, savename):
     plt.figure()
     plt.loglog(n_cell, volumes)
     plt.xlabel('Number of facets [-]')
-    plt.ylabel((r'Volume [mm$^3$]'))
+    plt.ylabel(r'Volume [mm$^3$]')
     plt.savefig(f'{savename}_time_volume_comp.svg', format='svg', bbox_inches='tight')
     plt.show()
 
@@ -488,17 +514,14 @@ def case_study():
     start = time.time()
 
     # file parameters
-    CASENAME = 'jet_bracket'
-    GEOM = 'Geometries/jet_bracket_2.stl'
-    connectivity = read_connectivity_csv('out/sim_data/jet_bracket_2_conn.csv')
-    # CASENAME = 'cutout_cube'
-    # GEOM = 'Geometries/cube_cutout.stl'
-    # connectivity = read_connectivity_csv('out/sim_data/connectivity2.csv')
+    CASENAME = 'Armadillo'
+    GEOM = 'Geometries/Armadillo.stl'
 
     # read geometry
-    m = pv.read(GEOM)
-    # mesh = mesh.subdivide(2, subfilter='linear')
-    mesh = prep_mesh(m, decimation=0.8)
+    m = decimate_quadric(GEOM, 10000)
+    # connectivity = generate_connectivity_vtk(m)
+    connectivity = read_connectivity_csv('out/sim_data/connectivity_armadillo_10000.csv')
+    mesh = prep_mesh(m, scaling=0.05)
     assert len(connectivity) == mesh.n_cells
 
     # make new folder based on current datetime
@@ -520,80 +543,64 @@ def case_study():
 
     logging.info(f'Start of case study {GEOM}')
 
-    # set parameters
+    # SET PARAMETERS HERE
     par = {
         'connectivity': connectivity,
         'build_dir': np.array([0, 0, 1]),
-        'down_thresh': np.sin(np.deg2rad(45)),
+        'down_thresh': np.sin(np.deg2rad(0)),
         'up_thresh': np.sin(np.deg2rad(0)),
         'down_k': 10,
         'up_k': 10,
-        'softmin_p': -15,
-        'SoP_penalty': 1
+        'softmin_p': -40,
+        'SoP_penalty': 0
     }
     smoothing_range = [1, 2, 5, 10, 15]
     penalty_range = [0, 0.5, 1, 2, 5]
     overhang_range = [0, 30, 45, 60]
     up_range = [0, 5, 10, 15, 30]
     opt_methods = [['BFGS', 'CG', 'Newton-CG'], ['BFGS', 'CG', 'Nelder-Mead']]
-    divs = [4]
+    divs = [0, 1, 2, 3, 4, 5]
+    cell_sizes = np.logspace(2, 4, 6)
 
-    # logging.info(f'{"#" * 10} Processing {CASENAME} - effect of smoothing {"#" * 10}')
-    # case_study_smoothing(mesh, par, smoothing_range, OUTNAME)
+    logging.info(f'{"#" * 10} Processing {CASENAME} - effect of smoothing {"#" * 10}')
+    case_study_smoothing(mesh, par, smoothing_range, OUTNAME)
 
-    # logging.info(f'{"#" * 10} Processing {CASENAME} - effect of SoP penalty {"#" * 10}')
-    # case_study_penalty(mesh, par, penalty_range, OUTNAME)
+    logging.info(f'{"#" * 10} Processing {CASENAME} - effect of SoP penalty {"#" * 10}')
+    case_study_penalty(mesh, par, penalty_range, OUTNAME)
 
-    # logging.info(f'{"#" * 10} Processing {CASENAME} - effect of overhang threshold {"#" * 10}')
-    # case_study_overhang(mesh, par, overhang_range, OUTNAME)
+    logging.info(f'{"#" * 10} Processing {CASENAME} - effect of overhang threshold {"#" * 10}')
+    case_study_overhang(mesh, par, overhang_range, OUTNAME)
     # #
-    # logging.info(f'{"#" * 10} Processing {CASENAME} - effect of upward threshold {"#" * 10}')
-    # case_study_up_thresh(mesh, par, up_range, OUTNAME)
+    logging.info(f'{"#" * 10} Processing {CASENAME} - effect of upward threshold {"#" * 10}')
+    case_study_up_thresh(mesh, par, up_range, OUTNAME)
 
     logging.info(f'{"#" * 10} Processing {CASENAME} - comparing time scaling {"#" * 10}')
-    case_study_time(pv.read('Geometries/cube_cutout.stl'), par, divs, OUTNAME)
+    case_study_time(pv.read('Geometries/cube_cutout.stl'), par, divs, os.path.join(OUTDIR, 'cube'), cube=True)
+    case_study_time(GEOM, par, cell_sizes, OUTNAME)
 
-    # logging.info(f'{"#" * 10} Processing {CASENAME} - comparing optimizers {"#" * 10}')
-    #
-    # par['down_thresh'] = np.sin(np.deg2rad(45))
-
-    # logging.info(f'Using gradient based methods')
-    # case_study_optimizers(mesh, par, opt_methods, OUTNAME)
-    # logging.info(f'Using GA')
-    # case_study_GA(mesh, par, OUTNAME)
+    logging.info(f'{"#" * 10} Processing {CASENAME} - comparing optimizers {"#" * 10}')
+    logging.info(f'Using gradient based methods')
+    case_study_optimizers(mesh, par, opt_methods, OUTNAME)
+    logging.info(f'Using GA')
+    case_study_GA(mesh, par, OUTNAME)
 
     # make gif
-    # logging.info(f'{"#" * 10} Processing {CASENAME} - GIF of opt steps {"#" * 10}')
-    # x = [[-1.50000000e+02, -1.00000000e+02],
-    #      [-1.57830839e+02, -8.26680390e+00],
-    #      [-156, -70],
-    #      [-157, -60],
-    #      [-157, -40],
-    #      [-157, -30],
-    #      [-1.56920207e+02, -1.80438659e+00],
-    #      [-1.56073695e+02, 7.45543832e-01],
-    #      [-1.53771313e+02, -1.40054200e+00],
-    #      [-130, 10],
-    #      [-115, 20],
-    #      [-1.03123613e+02, 3.49896204e+01],
-    #      [-1.01098175e+02, 3.09173399e+01],
-    #      [-9.50259873e+01, 2.87482890e+01],
-    #      [-8.46711647e+01, 2.52178592e+01],
-    #      [-70, 15],
-    #      [-5.75693567e+01, 9.56422884e+00],
-    #      [-5.83044754e+01, 7.31636672e+00],
-    #      [-5.77186475e+01, 3.18459258e+00],
-    #      [-5.82112601e+01, 2.95535587e-01],
-    #      [-5.79894653e+01, 1.63644754e-01],
-    #      [-5.80720929e+01, 1.53764159e-01]]
-    # opt_steps_gif(mesh, par, x, OUTNAME)
+    logging.info(f'{"#" * 10} Processing {CASENAME} - GIF of opt steps {"#" * 10}')
+    x = [[0, 0],
+         [10, -5],
+         [30, -20],
+         [50, -30],
+         [70, -40],
+         [90, -45],
+         [100, -50]]
+    opt_steps_gif(mesh, par, x, OUTNAME)
 
     # plot some opt steps
-    # x = [[-50., -50.],
-    #      [-65, -30],
-    #      [-80.52814343, -0.83880375],
-    #      [-58.07838285, 0.20406354]]
-    # plot_opt_steps(mesh, par, x)
+    x = [[-50., -50.],
+         [-65, -30],
+         [-80.52814343, -0.83880375],
+         [-58.07838285, 0.20406354]]
+    plot_opt_steps(mesh, par, x)
 
     logging.info(f'Finished in {time.time() - start} seconds')
 
