@@ -1,7 +1,0 @@
-download VS community 2022 with options:
-	- MSVC vxxx - VS 2022 C++ x64/x86 build tools (Latest)
-	- Windows 10 SDK
-
-clone https://github.com/Cascades/PyMesh
-install python < 3.12 (& create venv?)
-install boost (in pymesh folder?), see instructions on GH
