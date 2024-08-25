@@ -5,57 +5,57 @@ from joblib import delayed, Parallel
 from os import cpu_count
 
 
-def fwd(fun, angles, mesh, args, h):
-    fplush_x, _ = fun([angles[0] + h, angles[1]], mesh, args)
-    fplush_y, _ = fun([angles[0], angles[1] + h], mesh, args)
+def fwd(fun, angles, mesh, par, h):
+    fplush_x, _ = fun([angles[0] + h, angles[1]], mesh, par)
+    fplush_y, _ = fun([angles[0], angles[1] + h], mesh, par)
 
     return fplush_x, fplush_y
 
 
-def cntrl2(fun, angles, mesh, args, h):
-    x1, _ = fun([angles[0] + 2 * h, angles[1]], mesh, args)
-    x2, _ = fun([angles[0] + h, angles[1]], mesh, args)
-    x3, _ = fun([angles[0] - h, angles[1]], mesh, args)
-    x4, _ = fun([angles[0] - 2 * h, angles[1]], mesh, args)
+def cntrl2(fun, angles, mesh, par, h):
+    x1, _ = fun([angles[0] + 2 * h, angles[1]], mesh, par)
+    x2, _ = fun([angles[0] + h, angles[1]], mesh, par)
+    x3, _ = fun([angles[0] - h, angles[1]], mesh, par)
+    x4, _ = fun([angles[0] - 2 * h, angles[1]], mesh, par)
 
-    y1, _ = fun([angles[0], angles[1] + 2 * h], mesh, args)
-    y2, _ = fun([angles[0], angles[1] + h], mesh, args)
-    y3, _ = fun([angles[0], angles[1] - h], mesh, args)
-    y4, _ = fun([angles[0], angles[1] - 2 * h], mesh, args)
+    y1, _ = fun([angles[0], angles[1] + 2 * h], mesh, par)
+    y2, _ = fun([angles[0], angles[1] + h], mesh, par)
+    y3, _ = fun([angles[0], angles[1] - h], mesh, par)
+    y4, _ = fun([angles[0], angles[1] - 2 * h], mesh, par)
 
     x = (-x1 + 8 * x2 - 8 * x3 + x4) / (12 * h)
     y = (-y1 + 8 * y2 - 8 * y3 + y4) / (12 * h)
     return x, y
 
 
-def cntrl(fun, angles, mesh, args, h):
-    x2, _ = fun([angles[0] + h, angles[1]], mesh, args)
-    x3, _ = fun([angles[0] - h, angles[1]], mesh, args)
+def cntrl(fun, angles, mesh, par, h):
+    x2, _ = fun([angles[0] + h, angles[1]], mesh, par)
+    x3, _ = fun([angles[0] - h, angles[1]], mesh, par)
 
-    y2, _ = fun([angles[0], angles[1] + h], mesh, args)
-    y3, _ = fun([angles[0], angles[1] - h], mesh, args)
+    y2, _ = fun([angles[0], angles[1] + h], mesh, par)
+    y3, _ = fun([angles[0], angles[1] - h], mesh, par)
 
     x = (x2 - x3) / (2 * h)
     y = (y2 - y3) / (2 * h)
     return x, y
 
 
-def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', outfile=None):
+def finite_differences_plot(fun, angles, mesh, par, h_range, method='forward', outfile=None):
     if method == 'forward':
-        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, args, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, par, h) for h in h_range)
         title = f'Forward differences at x={np.rad2deg(angles)} degrees'
     elif method == 'central':
-        res = Parallel(n_jobs=cpu_count())(delayed(cntrl)(fun, angles, mesh, args, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(cntrl)(fun, angles, mesh, par, h) for h in h_range)
         title = f'Central differences at x={np.rad2deg(angles)} degrees'
     elif method == 'central2':
-        res = Parallel(n_jobs=cpu_count())(delayed(cntrl2)(fun, angles, mesh, args, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(cntrl2)(fun, angles, mesh, par, h) for h in h_range)
         title = f'Second order central differences at x={np.rad2deg(angles)} degrees'
     else:
-        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, args, h) for h in h_range)
+        res = Parallel(n_jobs=cpu_count())(delayed(fwd)(fun, angles, mesh, par, h) for h in h_range)
         title = f'Forward differences at x={np.rad2deg(angles)} degrees'
 
     fx, fy = zip(*res)
-    f, [dfdx, dfdy] = fun(angles, mesh, args)
+    f, [dfdx, dfdy] = fun(angles, mesh, par)
 
     if method == 'forward':
         fx = np.subtract(fx, f) / h_range
@@ -76,14 +76,12 @@ def finite_differences_plot(fun, angles, mesh, args, h_range, method='forward', 
     plt.show()
 
 
-def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray, par):
-    p = par['softmin_p']
-
+def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.ndarray, par) -> pv.DataSet:
     _, _, R, dRda, dRdb = construct_rotation_matrix(angles[0], angles[1])
     mesh_rot = rotate_mesh(mesh, R)
 
     # set z_min
-    z_min, dz_min = mellow_min(mesh_rot.points, p)
+    z_min, dz_min = mellow_min(mesh_rot.points, par['softmin_p'])
     dzda = np.sum(dz_min * np.transpose(dRda @ np.transpose(mesh.points)), axis=0)
     dzdb = np.sum(dz_min * np.transpose(dRdb @ np.transpose(mesh.points)), axis=0)
 
