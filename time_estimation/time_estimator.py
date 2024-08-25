@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from latex_params import latex_params
-plt.rcParams.update(latex_params['params'])
 
 # parameters
 TRAIN_RATIO = 1

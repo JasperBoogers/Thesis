@@ -7,7 +7,6 @@ scipy
 vtk
 numpy-stl
 pyvista
-pymeshfix==0.16.1
 trimesh
 rtree
 pyembree
@@ -15,5 +14,4 @@ pyembree
 imageio
 tqdm
 
-jax
 joblib

@@ -19,7 +19,6 @@ from vtk import (
     vtkCubeSource,
     vtkCenterOfMass)
 import pyvista as pv
-from parameters import par
 
 
 # make evaluation function
