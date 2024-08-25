@@ -76,8 +76,9 @@ if __name__ == '__main__':
     # plot support requirement of mesh in given orientation
     mesh = calc_cell_sensitivities(mesh, angles, args)
     p = pv.Plotter()
-    _ = p.add_mesh(mesh, lighting=True, scalars='MA', cmap='RdYlBu', clim=[-1, 1], scalar_bar_args={"title": "Support requirement",
-                                                                                                    "position_x": 0.05,
-                                                                                                    "position_y": 0.9}, show_edges=False)
+    _ = p.add_mesh(mesh, lighting=True, scalars='MA', cmap='RdYlBu', clim=[-1, 1], show_edges=False,
+                   scalar_bar_args={"title": "Support requirement",
+                                    "position_x": 0.05,
+                                    "position_y": 0.9})
     _ = p.add_mesh(construct_build_plane(mesh, 0), lighting=True, color='k', opacity=0.8)
     p.show()

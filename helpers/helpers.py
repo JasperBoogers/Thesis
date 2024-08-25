@@ -8,7 +8,7 @@ from io_helpers import *
 from vtk_helpers import *
 
 
-def prep_mesh(mesh: pv.PolyData | pv.DataSet, scaling=1, decimation=0, flip=False, translate=True) -> pv.DataSet:
+def prep_mesh(mesh: pv.PolyData | pv.DataSet, scaling=1, decimation=0, flip=False, translate=True) -> pv.PolyData:
     # set to double precision
     mesh = mesh.points_to_double()
 

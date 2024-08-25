@@ -23,6 +23,7 @@ def case_study_smoothing(mesh, par, k_range, savename):
 
     fun = []
     dfun = []
+    angles = []
     for k in k_range:
         logging.debug(f'k = {k}')
         fun_arg['down_k'] = k
@@ -70,6 +71,7 @@ def case_study_penalty(mesh, par, penalty_range, savename):
 
     fun = []
     dfun = []
+    angles = []
     for k in penalty_range:
         logging.debug(f'Penalty = {k}')
         fun_arg['SoP_penalty'] = k
@@ -117,6 +119,7 @@ def case_study_overhang(mesh, par, threshold_range, savename):
 
     fun = []
     dfun = []
+    angles = []
     for k in threshold_range:
         logging.debug(f'Threshold = {k}')
         fun_arg['down_thresh'] = np.sin(np.deg2rad(k))
@@ -164,6 +167,7 @@ def case_study_up_thresh(mesh, par, up_range, savename):
 
     fun = []
     dfun = []
+    angles = []
     for k in up_range:
         logging.debug(f'Threshold = {k}')
         fun_arg['up_thresh'] = np.sin(np.deg2rad(k))
@@ -288,7 +292,7 @@ def case_study_optimizers(mesh, par, methods, savename):
 
     # make contour plot with steps visualized
     xx, yy = np.meshgrid(np.rad2deg(ax), np.rad2deg(ay))
-    fig = plt.figure()
+    _ = plt.figure()
     cp = plt.contour(xx, yy, f)
     for idx, row in res.iterrows():
         data = (row['x steps'] + 180) % (2 * 180) - 180
@@ -377,8 +381,8 @@ def case_study_GA(mesh, par, savename):
 
     # plot steps in contour plot
     xx, yy = np.meshgrid(ax, ay)
-    fig = plt.figure()
-    cp = plt.contour(xx, yy, contour)
+    _ = plt.figure()
+    _ = plt.contour(xx, yy, contour)
     for idx, row in enumerate(steps):
         data = (np.rad2deg(row) + 180) % (2 * 180) - 180
         plt.plot(data[:, 0], data[:, 1], '-o', markersize=4, label=idx)
@@ -398,9 +402,9 @@ def opt_steps_gif(mesh, args, x, filename):
     p.add_mesh(mesh_rot, name='mesh', lighting=True, scalars='MA',
                scalar_bar_args={"title": "Support requirement"}, clim=[-1, 1], cmap='RdYlBu')
     plane = pv.Plane(center=(0, 0, mesh_rot.bounds[-2]),
-                    i_size=1.5*d,
-                    j_size=1.5*d,
-                    direction=(0, 0, 1))
+                     i_size=1.5 * d,
+                     j_size=1.5 * d,
+                     direction=(0, 0, 1))
     p.add_mesh(plane, style='wireframe', color='k', lighting=True, name='bed')
     p.add_axes()
     p.camera.position = (15, 9, plane.bounds[-1] + cam_offset)
@@ -426,7 +430,6 @@ def opt_steps_gif(mesh, args, x, filename):
 
 
 def plot_opt_steps(mesh, args, x):
-
     for step in x:
         p = pv.Plotter()
         mesh_rot = calc_cell_sensitivities(mesh, np.deg2rad(step), args)
