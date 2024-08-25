@@ -4,13 +4,15 @@ import pandas as pd
 from scipy.spatial.transform import Rotation
 from matplotlib import pyplot as plt
 from os import cpu_count
-from vtk import vtkOBBTree, vtkPoints, vtkCellData, vtkCellArray, vtkPolyData, vtkIdList
+from vtk import (vtkOBBTree, vtkPoints, vtkCellArray, vtkQuadricDecimation, vtkPolyData, vtkTransform,
+                 vtkTransformPolyDataFilter, vtkCenterOfMass, vtkPolyDataNormals, vtkCellCenters, vtkIdList)
 from joblib import delayed, Parallel
 from math_helpers import *
 from io_helpers import *
+from vtk_helpers import *
 
 
-def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0, flip=False, translate=True) -> pv.DataSet:
+def prep_mesh(mesh: pv.PolyData | pv.DataSet, scaling=1, decimation=0, flip=False, translate=True) -> pv.DataSet:
     # set to double precision
     mesh = mesh.points_to_double()
 
@@ -19,6 +21,9 @@ def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0, flip=False, translat
 
     # decimate mesh by decimate*100%
     mesh = mesh.decimate_pro(decimation)
+
+    # scale mesh
+    mesh = mesh.scale(scaling)
 
     # ensure mesh is only triangles
     mesh.clean(inplace=True)
@@ -34,6 +39,21 @@ def prep_mesh(mesh: pv.PolyData | pv.DataSet, decimation=0, flip=False, translat
         mesh = mesh.translate(-mesh.center_of_mass(), inplace=False)
 
     return mesh
+
+
+def decimate_quadric(filename, target_size=1000, vtk=False):
+    mesh = read_STL(filename)
+
+    flt = vtkQuadricDecimation()
+    flt.SetInputData(mesh)
+    flt.SetTargetReduction((mesh.GetNumberOfCells()-target_size)/mesh.GetNumberOfCells())
+    flt.SetVolumePreservation(True)
+    flt.Update()
+
+    if vtk:
+        return flt.GetOutput()
+    else:
+        return pv.PolyData(flt.GetOutput())
 
 
 def rotate_mesh(m: pv.PolyData | pv.DataSet, rot: np.ndarray | Rotation) -> pv.DataSet:
@@ -678,7 +698,7 @@ def smooth_overhang_connectivity(mesh, rotated_mesh: pv.PolyData | pv.DataSet, R
 
             Dj = Down[conn]
 
-            mask_val = np.sum(np.dot(-build_dir, l.transpose()) * Dj) * Ui / v
+            mask_val = np.sum(smooth_heaviside(np.dot(-build_dir, l.transpose()), 20, 0.8) * Dj) * Ui / v
             mask[idx] += mask_val
 
             normals0_ = np.transpose(mesh['Normals'][conn])
@@ -813,6 +833,52 @@ def generate_connectivity_obb(mesh):
                     # ids = ids[ids != i]
                     if sec.GetData().GetNumberOfTuples() == 0:
                         arr.append(j)
+        res.append(list(set(arr)))
+
+    return res
+
+
+def generate_connectivity_vtk(poly, threshold=0):
+
+    poly = vtk_move_to_origin(poly)
+
+    # compute facet normals
+    poly = vtk_compute_normals(poly)
+    normals = np.array(poly.GetCellData().GetArray('Normals'))
+
+    # compute cell centers
+    cen = vtk_compute_cell_centers(poly)
+
+    obb = vtkOBBTree()
+    obb.SetDataSet(poly)
+    obb.BuildLocator()
+
+    con_pts = vtkPoints()
+    res = []
+
+    for i in range(poly.GetNumberOfCells()):
+        con_pts.InsertPoint(i, cen[i][0], cen[i][1], cen[i][2])
+
+        arr = []
+        for j in range(poly.GetNumberOfCells()):
+            if i != j:
+
+                vecj = cen[j] - cen[i]
+                vecj = vecj / np.linalg.norm(vecj)
+
+                if np.dot(vecj, normals[i]) > threshold:
+                    sec = vtkPoints()
+                    code = obb.IntersectWithLine(cen[i] + 1e-3 * vecj, cen[j] - 1e-3 * vecj, sec, None)
+                    sec_dat = sec.GetData()
+                    nop = sec_dat.GetNumberOfTuples()
+
+                    if nop == 0:
+                        # ids = vtkIdList()
+                        # ids.InsertNextId(i)
+                        # ids.InsertNextId(j)
+                        # con_elm.InsertNextCell(ids)
+                        arr.append(j)
+
         res.append(list(set(arr)))
 
     return res
