@@ -102,22 +102,6 @@ def calc_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, angles: list | np.nd
     return mesh_rot
 
 
-def plot_cell_sensitivities(mesh: pv.PolyData | pv.DataSet, axis: str = 'x') -> None:
-    p = pv.Plotter()
-    if axis == 'x':
-        scalars = 'dVda'
-    elif axis == 'y':
-        scalars = 'dVdb'
-    elif axis == 'V':
-        scalars = 'V'
-    else:
-        scalars = 'MA'
-
-    _ = p.add_mesh(mesh, lighting=False, scalars=scalars, show_edges=True)
-    p.add_axes()
-    p.show()
-
-
 if __name__ == '__main__':
     start = time.time()
 
